@@ -178,9 +178,23 @@ def check_for_grib_requests(mail):
                     else:
                         body = msg.get_payload(decode=True).decode()
                     
-                    # Chercher requête GRIB
-                    grib_pattern = re.compile(r'(ecmwf|gfs|icon):[0-9nNsSwWeE,|]+', re.IGNORECASE)
+                    # DEBUG: Afficher le contenu de l'email
+                    print(f"\n📧 EMAIL TROUVÉ:")
+                    print(f"  From: {msg.get('From', 'Unknown')}")
+                    print(f"  Subject: {msg.get('Subject', 'No subject')}")
+                    print(f"  Body (premiers 200 chars): {body[:200]}")
+                    print(f"  Body complet:\n{body}\n")
+                    
+                    # Chercher requête GRIB - pattern amélioré pour capturer toute la ligne
+                    # Exemple: Ecmwf:7N,9N,79W,81W|8|24,48,72,96,120
+                    grib_pattern = re.compile(r'(ecmwf|gfs|icon):[^\s\n]+', re.IGNORECASE)
                     match = grib_pattern.search(body)
+                    
+                    if not match:
+                        # Si pas trouvé, essayer de chercher sur plusieurs lignes
+                        # Parfois la requête est sur plusieurs lignes
+                        body_single_line = body.replace('\n', ' ').replace('\r', ' ')
+                        match = grib_pattern.search(body_single_line)
                     
                     if not match:
                         continue
