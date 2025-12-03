@@ -237,26 +237,48 @@ def check_for_grib_requests(mail):
         return []
 
 def send_to_saildocs(grib_request):
-    """Envoie la requête à Saildocs - SMTP SSL port 465"""
+    """Envoie la requête à Saildocs via SendGrid API"""
     global last_status
     
     try:
-        print(f"🌊 Envoi de la demande GRIB à Saildocs...")
+        print(f"🌊 Envoi de la demande GRIB à Saildocs via SendGrid...")
         
-        msg = MIMEText(f"send {grib_request}")
-        msg['Subject'] = "GRIB Request"
-        msg['From'] = GARMIN_USERNAME
-        msg['To'] = SAILDOCS_EMAIL
+        # Récupérer la clé API SendGrid depuis les variables d'environnement
+        sendgrid_api_key = os.environ.get('SENDGRID_API_KEY')
+        if not sendgrid_api_key:
+            last_status = "❌ ERREUR: Variable SENDGRID_API_KEY non définie"
+            print(last_status)
+            return False
         
-        # SMTP_SSL sur port 465 (comme dans Termux)
-        server = smtplib.SMTP_SSL(GMAIL_HOST, GMAIL_PORT)
-        server.login(GARMIN_USERNAME, GARMIN_PASSWORD)
-        server.send_message(msg)
-        server.quit()
+        # Construire la requête pour l'API SendGrid
+        url = "https://api.sendgrid.com/v3/mail/send"
+        headers = {
+            "Authorization": f"Bearer {sendgrid_api_key}",
+            "Content-Type": "application/json"
+        }
         
-        print(f"✅ Demande GRIB envoyée à Saildocs: {grib_request}")
-        last_status = "✅ Demande GRIB envoyée à Saildocs"
-        return True
+        data = {
+            "personalizations": [{
+                "to": [{"email": SAILDOCS_EMAIL}],
+                "subject": "GRIB Request"
+            }],
+            "from": {"email": GARMIN_USERNAME},
+            "content": [{
+                "type": "text/plain",
+                "value": f"send {grib_request}"
+            }]
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=30)
+        
+        if response.status_code == 202:
+            print(f"✅ Demande GRIB envoyée à Saildocs: {grib_request}")
+            last_status = "✅ Demande GRIB envoyée à Saildocs"
+            return True
+        else:
+            last_status = f"❌ Erreur SendGrid: Status {response.status_code}"
+            print(f"{last_status} - {response.text}")
+            return False
         
     except Exception as e:
         last_status = f"❌ Erreur lors de l'envoi à Saildocs: {str(e)}"
