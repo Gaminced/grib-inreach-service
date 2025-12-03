@@ -146,7 +146,8 @@ def check_for_grib_requests(mail):
     
     try:
         mail.select("inbox")
-        status, messages = mail.search(None, f'(FROM "{SERVICE_EMAIL}" UNSEEN)')
+        # Cherche TOUS les emails non lus contenant "inreach" dans l'expéditeur
+        status, messages = mail.search(None, '(UNSEEN FROM "inreach")')
         
         if status != "OK":
             last_status = "❌ Erreur lors de la recherche d'emails"
@@ -431,10 +432,10 @@ def process_grib_workflow():
 
 def run_scheduled_tasks():
     """Exécute les tâches planifiées"""
-    print("⏰ Planification : Vérification toutes les 6 heures")
+    print("⏰ Planification : Vérification toutes les heures")
     
-    # Planification toutes les 6 heures
-    schedule.every(6).hours.do(process_grib_workflow)
+    # Planification toutes les heures
+    schedule.every(1).hours.do(process_grib_workflow)
     
     # Exécution immédiate au démarrage
     process_grib_workflow()
