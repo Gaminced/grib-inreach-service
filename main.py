@@ -4,6 +4,7 @@
 Service de traitement automatique des fichiers GRIB pour Garmin InReach
 Surveille les emails, télécharge les fichiers GRIB, les traite avec Saildocs, 
 et renvoie les données météo vers le Garmin InReach.
+VERSION CORRIGÉE - Configuration SMTP identique à Termux
 """
 
 import os
@@ -12,12 +13,16 @@ import time
 import imaplib
 import email
 import smtplib
+import base64
+import zlib
+import re
 import requests
 import schedule
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from threading import Thread
+from urllib.parse import urlparse, parse_qs
 from flask import Flask, jsonify
 
 # ==========================================
@@ -25,20 +30,47 @@ from flask import Flask, jsonify
 # ==========================================
 
 # Variables d'environnement (définies dans Render)
-GARMIN_USERNAME = os.environ.get('GARMIN_USERNAME')
+GARMIN_USERNAME = os.environ.get('GARMIN_USERNAME', 'garminced@gmail.com')
 GARMIN_PASSWORD = os.environ.get('GARMIN_PASSWORD')
 
-# Configuration Email (Garmin InReach)
-IMAP_SERVER = "imap.gmail.com"
+# Configuration Email - SMTP SSL sur port 465 (comme Termux)
+GMAIL_HOST = "smtp.gmail.com"
+GMAIL_PORT = 465  # SSL direct
+IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
 
-# Adresse email de Saildocs pour récupérer les GRIB
+# Adresses Saildocs et Garmin
 SAILDOCS_EMAIL = "query@saildocs.com"
+SAILDOCS_RESPONSE_EMAIL = "query-reply@saildocs.com"
+SERVICE_EMAIL = "no.reply.inreach@garmin.com"
+
+# Configuration messages inReach
+MAX_MESSAGE_LENGTH = 120
+DELAY_BETWEEN_MESSAGES = 5
 
 # Configuration du port pour Render
 PORT = int(os.environ.get('PORT', 10000))
+
+# Headers HTTP pour Garmin inReach
+INREACH_HEADERS = {
+    'authority': 'eur.explore.garmin.com',
+    'accept': '*/*',
+    'accept-language': 'en-US,en;q=0.9',
+    'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    'origin': 'https://eur.explore.garmin.com',
+    'sec-ch-ua': '"Chromium";v="106", "Not;A=Brand";v="99", "Google Chrome";v="106.0.5249.119"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36',
+    'x-requested-with': 'XMLHttpRequest',
+}
+
+INREACH_COOKIES = {
+    'BrowsingMode': 'Desktop',
+}
 
 # ==========================================
 # APPLICATION FLASK (pour le Health Check)
@@ -94,110 +126,113 @@ def check_credentials():
     print(f"✅ Identifiants Garmin configurés pour: {GARMIN_USERNAME}")
     return True
 
-def connect_to_email():
-    """Connexion à la boîte email Garmin InReach"""
+def connect_gmail():
+    """Connexion à Gmail via IMAP"""
     global last_status
     try:
-        print(f"📧 Connexion à la boîte email: {GARMIN_USERNAME}")
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+        print(f"📧 Connexion IMAP à Gmail: {GARMIN_USERNAME}")
+        mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
         mail.login(GARMIN_USERNAME, GARMIN_PASSWORD)
-        print("✅ Connexion email réussie")
+        print("✅ Connexion IMAP réussie")
         return mail
     except Exception as e:
-        last_status = f"❌ Erreur de connexion email: {str(e)}"
+        last_status = f"❌ Erreur connexion IMAP: {str(e)}"
         print(last_status)
         return None
 
 def check_for_grib_requests(mail):
-    """Vérifie s'il y a des demandes de fichiers GRIB dans les emails"""
+    """Vérifie les nouveaux emails avec requêtes GRIB depuis inReach"""
     global last_status, last_check_time
     
     try:
-        mail.select('inbox')
+        mail.select("inbox")
+        status, messages = mail.search(None, f'(FROM "{SERVICE_EMAIL}" UNSEEN)')
         
-        # Recherche des emails non lus avec le sujet GRIB
-        status, messages = mail.search(None, 'UNSEEN', 'SUBJECT', '"GRIB"')
-        
-        if status != 'OK':
+        if status != "OK":
             last_status = "❌ Erreur lors de la recherche d'emails"
             return []
         
         email_ids = messages[0].split()
         print(f"📬 {len(email_ids)} nouveau(x) email(s) GRIB trouvé(s)")
         
-        grib_requests = []
+        requests_list = []
         
         for email_id in email_ids:
-            status, msg_data = mail.fetch(email_id, '(RFC822)')
+            status, msg_data = mail.fetch(email_id, "(RFC822)")
             
-            if status != 'OK':
+            if status != "OK":
                 continue
             
-            raw_email = msg_data[0][1]
-            email_message = email.message_from_bytes(raw_email)
-            
-            subject = email_message['subject']
-            from_email = email_message['from']
-            
-            # Extraire les coordonnées et paramètres du corps de l'email
-            body = get_email_body(email_message)
-            
-            grib_requests.append({
-                'from': from_email,
-                'subject': subject,
-                'body': body,
-                'email_id': email_id
-            })
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
+                    
+                    # Récupérer le corps
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain":
+                                body = part.get_payload(decode=True).decode()
+                                break
+                    else:
+                        body = msg.get_payload(decode=True).decode()
+                    
+                    # Chercher requête GRIB
+                    grib_pattern = re.compile(r'(ecmwf|gfs|icon):[0-9nNsSwWeE,|]+', re.IGNORECASE)
+                    match = grib_pattern.search(body)
+                    
+                    if not match:
+                        continue
+                    
+                    grib_request = match.group(0)
+                    
+                    # Extraire URL de réponse
+                    reply_url_pattern = re.compile(r'https://[^\s]+garmin\.com/textmessage/txtmsg\?[^\s]+')
+                    reply_match = reply_url_pattern.search(body)
+                    
+                    if not reply_match:
+                        print(f"⚠ Requête sans URL: {grib_request}")
+                        continue
+                    
+                    reply_url = reply_match.group(0)
+                    
+                    print(f"✅ Requête trouvée: {grib_request}")
+                    print(f"  URL: {reply_url[:60]}...")
+                    
+                    requests_list.append({
+                        'request': grib_request,
+                        'reply_url': reply_url
+                    })
         
         last_check_time = datetime.now()
-        last_status = f"✅ Vérification terminée - {len(grib_requests)} demande(s) trouvée(s)"
+        last_status = f"✅ Vérification terminée - {len(requests_list)} demande(s) trouvée(s)"
         
-        return grib_requests
+        return requests_list
         
     except Exception as e:
         last_status = f"❌ Erreur lors de la vérification des emails: {str(e)}"
         print(last_status)
         return []
 
-def get_email_body(email_message):
-    """Extrait le corps de l'email"""
-    body = ""
-    
-    if email_message.is_multipart():
-        for part in email_message.walk():
-            if part.get_content_type() == "text/plain":
-                body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                break
-    else:
-        body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
-    
-    return body
-
-def request_grib_from_saildocs(grib_params):
-    """Envoie une demande de fichier GRIB à Saildocs"""
+def send_to_saildocs(grib_request):
+    """Envoie la requête à Saildocs - SMTP SSL port 465"""
     global last_status
     
     try:
         print(f"🌊 Envoi de la demande GRIB à Saildocs...")
         
-        # Construction du message pour Saildocs
-        msg = MIMEMultipart()
+        msg = MIMEText(f"send {grib_request}")
+        msg['Subject'] = "GRIB Request"
         msg['From'] = GARMIN_USERNAME
         msg['To'] = SAILDOCS_EMAIL
-        msg['Subject'] = "GRIB Request"
         
-        # Corps du message avec les paramètres GRIB
-        body = f"send {grib_params}"
-        msg.attach(MIMEText(body, 'plain'))
-        
-        # Envoi via SMTP
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
+        # SMTP_SSL sur port 465 (comme dans Termux)
+        server = smtplib.SMTP_SSL(GMAIL_HOST, GMAIL_PORT)
         server.login(GARMIN_USERNAME, GARMIN_PASSWORD)
         server.send_message(msg)
         server.quit()
         
-        print("✅ Demande GRIB envoyée à Saildocs")
+        print(f"✅ Demande GRIB envoyée à Saildocs: {grib_request}")
         last_status = "✅ Demande GRIB envoyée à Saildocs"
         return True
         
@@ -206,83 +241,189 @@ def request_grib_from_saildocs(grib_params):
         print(last_status)
         return False
 
-def send_grib_to_garmin(grib_data, recipient_email):
-    """Envoie les données GRIB traitées vers le Garmin InReach"""
-    global last_status
+def wait_for_saildocs_response(mail, timeout=300):
+    """Attend la réponse Saildocs avec GRIB"""
+    print("⏳ Attente de la réponse Saildocs...")
+    
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout:
+        try:
+            mail.select("inbox")
+            status, messages = mail.search(None, f'(FROM "{SAILDOCS_RESPONSE_EMAIL}" UNSEEN)')
+            
+            if status == "OK" and messages[0]:
+                email_ids = messages[0].split()
+                
+                for email_id in email_ids:
+                    status, msg_data = mail.fetch(email_id, "(RFC822)")
+                    
+                    if status != "OK":
+                        continue
+                    
+                    for response_part in msg_data:
+                        if isinstance(response_part, tuple):
+                            msg = email.message_from_bytes(response_part[1])
+                            
+                            for part in msg.walk():
+                                if part.get_content_disposition() == "attachment":
+                                    filename = part.get_filename()
+                                    if filename and ('.grb' in filename.lower() or '.grib' in filename.lower()):
+                                        grib_data = part.get_payload(decode=True)
+                                        print(f"✅ GRIB reçu: {filename} ({len(grib_data)} octets)")
+                                        return grib_data
+            
+            time.sleep(10)
+            
+        except Exception as e:
+            print(f"⚠ Erreur attente: {e}")
+            time.sleep(10)
+    
+    print("❌ Timeout Saildocs (aucun GRIB reçu)")
+    return None
+
+def encode_grib_to_messages(grib_data):
+    """Encode GRIB en messages de 120 caractères"""
+    
+    print(f"\n{'='*60}")
+    print("ENCODAGE GRIB")
+    print(f"{'='*60}")
+    
+    # Compression
+    compressed = zlib.compress(grib_data, level=9)
+    ratio = (1 - len(compressed) / len(grib_data)) * 100
+    print(f"1. Compression: {len(grib_data)} → {len(compressed)} octets ({ratio:.1f}%)")
+    
+    # Base64
+    encoded = base64.b64encode(compressed).decode('utf-8')
+    print(f"2. Base64: {len(encoded)} caractères")
+    
+    # Découpage
+    chunks = [encoded[i:i+MAX_MESSAGE_LENGTH] for i in range(0, len(encoded), MAX_MESSAGE_LENGTH)]
+    total = len(chunks)
+    
+    print(f"3. Découpage: {total} messages")
+    
+    # Formatage
+    messages = []
+    for i, chunk in enumerate(chunks):
+        msg = f"msg {i+1}/{total}:\\n{chunk}\\nend"
+        messages.append(msg)
+        print(f"   Message {i+1}/{total}: {len(chunk)} chars")
+    
+    print(f"{'='*60}\n")
+    
+    return messages
+
+def extract_guid_from_url(url):
+    """Extrait le GUID (extId) de l'URL inReach"""
+    parsed = urlparse(url)
+    guid_list = parse_qs(parsed.query).get('extId')
+    if not guid_list:
+        raise ValueError("GUID (extId) non trouvé dans l'URL")
+    return guid_list[0]
+
+def send_messages_to_inreach(url, messages):
+    """Envoie les messages vers inReach via POST"""
+    
+    print(f"📤 Envoi de {len(messages)} messages vers inReach")
     
     try:
-        print(f"📤 Envoi des données GRIB vers: {recipient_email}")
-        
-        msg = MIMEMultipart()
-        msg['From'] = GARMIN_USERNAME
-        msg['To'] = recipient_email
-        msg['Subject'] = "Météo GRIB"
-        
-        # Formatage des données météo en texte court pour InReach
-        formatted_data = format_grib_for_inreach(grib_data)
-        msg.attach(MIMEText(formatted_data, 'plain'))
-        
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(GARMIN_USERNAME, GARMIN_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        
-        print("✅ Données GRIB envoyées au Garmin InReach")
-        last_status = "✅ Données GRIB envoyées au Garmin InReach"
-        return True
-        
+        guid = extract_guid_from_url(url)
+        print(f"✅ GUID extrait: {guid}")
     except Exception as e:
-        last_status = f"❌ Erreur lors de l'envoi au Garmin: {str(e)}"
-        print(last_status)
+        print(f"❌ Erreur GUID: {e}")
         return False
-
-def format_grib_for_inreach(grib_data):
-    """Formate les données GRIB en texte court pour InReach (limitation 160 caractères)"""
-    # TODO: Adapter selon le format de données GRIB reçu
-    # Pour l'instant, retourne un format simple
-    return f"Météo: Vent 15kts NE, Mer 1.5m, Tendance stable. {datetime.now().strftime('%d/%m %H:%M')}"
+    
+    success_count = 0
+    
+    for i, message in enumerate(messages, 1):
+        try:
+            data = {
+                'ReplyMessage': message,
+                'Guid': guid,
+                'ReplyAddress': GARMIN_USERNAME,  # CRITIQUE: champ obligatoire
+            }
+            
+            response = requests.post(
+                url,
+                cookies=INREACH_COOKIES,
+                headers=INREACH_HEADERS,
+                data=data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                print(f"✅ Message {i}/{len(messages)} envoyé (Status: {response.status_code})")
+                success_count += 1
+            else:
+                print(f"⚠ Message {i}/{len(messages)} - Status: {response.status_code}")
+                print(f"  Réponse: {response.text[:200]}")
+            
+            # Délai entre messages
+            if i < len(messages):
+                time.sleep(DELAY_BETWEEN_MESSAGES)
+                
+        except Exception as e:
+            print(f"❌ Erreur message {i}/{len(messages)}: {e}")
+    
+    if success_count == len(messages):
+        print(f"\n✅ TOUS LES {len(messages)} MESSAGES ENVOYÉS!")
+        return True
+    else:
+        print(f"\n⚠ {success_count}/{len(messages)} messages envoyés")
+        return False
 
 def process_grib_workflow():
     """Processus complet de traitement des fichiers GRIB"""
     global last_status, last_check_time
     
-    print("\n" + "="*50)
-    print(f"🔄 Démarrage du traitement GRIB - {datetime.now()}")
-    print("="*50)
+    print(f"\n{'='*60}")
+    print(f"🔄 DÉMARRAGE TRAITEMENT GRIB - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}\n")
     
     if not check_credentials():
         return
     
-    mail = connect_to_email()
+    mail = connect_gmail()
     if not mail:
         return
     
     try:
-        grib_requests = check_for_grib_requests(mail)
+        requests_list = check_for_grib_requests(mail)
         
-        for request in grib_requests:
-            print(f"\n📩 Traitement de la demande de: {request['from']}")
-            
-            # Demande du fichier GRIB à Saildocs
-            if request_grib_from_saildocs(request['body']):
-                # Attente de la réponse de Saildocs (à adapter selon le temps réel)
-                time.sleep(60)
-                
-                # TODO: Récupérer la réponse de Saildocs
-                # TODO: Décoder le fichier GRIB
-                grib_data = "Données météo simulées"
-                
-                # Envoi des données au Garmin
-                send_grib_to_garmin(grib_data, request['from'])
-        
-        if len(grib_requests) == 0:
+        if not requests_list:
+            print("✅ Aucune nouvelle requête GRIB")
             last_status = "✅ Aucune nouvelle demande GRIB"
-            print(last_status)
+            return
+        
+        for req in requests_list:
+            print(f"\n{'='*60}")
+            print(f"TRAITEMENT: {req['request']}")
+            print(f"{'='*60}\n")
+            
+            if not send_to_saildocs(req['request']):
+                continue
+            
+            grib_data = wait_for_saildocs_response(mail, timeout=300)
+            
+            if not grib_data:
+                print("❌ Pas de GRIB reçu")
+                continue
+            
+            messages = encode_grib_to_messages(grib_data)
+            
+            if send_messages_to_inreach(req['reply_url'], messages):
+                last_status = f"✅ GRIB traité et envoyé avec succès ({len(messages)} messages)"
+            
+            print(f"\n✅ REQUÊTE TRAITÉE!\n")
         
     finally:
         mail.logout()
         print("📧 Déconnexion de la boîte email")
+        print(f"\n{'='*60}")
+        print("FIN DU TRAITEMENT")
+        print(f"{'='*60}\n")
 
 # ==========================================
 # PLANIFICATION DES TÂCHES
@@ -316,13 +457,14 @@ def main():
     """Point d'entrée principal"""
     global last_status
     
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("🚀 DÉMARRAGE DU SERVICE GRIB INREACH")
-    print("="*50)
+    print("="*60)
     print(f"📅 Date: {datetime.now()}")
     print(f"🔧 Port: {PORT}")
     print(f"👤 Utilisateur Garmin: {GARMIN_USERNAME}")
-    print("="*50 + "\n")
+    print(f"📧 SMTP: {GMAIL_HOST}:{GMAIL_PORT} (SSL)")
+    print("="*60 + "\n")
     
     last_status = "🚀 Service démarré"
     
