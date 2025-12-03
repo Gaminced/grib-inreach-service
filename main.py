@@ -484,17 +484,34 @@ def process_grib_workflow():
 def run_scheduled_tasks():
     """Exécute les tâches planifiées"""
     print("⏰ Planification : Vérification toutes les heures")
+    print("🔧 Thread de planification démarré")
     
-    # Planification toutes les heures
-    schedule.every(1).hours.do(process_grib_workflow)
-    
-    # Exécution immédiate au démarrage
-    process_grib_workflow()
+    try:
+        # Planification toutes les heures
+        schedule.every(1).hours.do(process_grib_workflow)
+        print("✅ Planification configurée")
+        
+        # Exécution immédiate au démarrage
+        print("🚀 Lancement de la première vérification...")
+        process_grib_workflow()
+        print("✅ Première vérification terminée")
+        
+    except Exception as e:
+        print(f"❌ ERREUR dans la première vérification: {e}")
+        import traceback
+        traceback.print_exc()
     
     # Boucle de vérification du planificateur
+    print("🔄 Entrée dans la boucle de planification...")
     while True:
-        schedule.run_pending()
-        time.sleep(60)
+        try:
+            schedule.run_pending()
+            time.sleep(60)
+        except Exception as e:
+            print(f"❌ ERREUR dans la boucle de planification: {e}")
+            import traceback
+            traceback.print_exc()
+            time.sleep(60)
 
 # ==========================================
 # DÉMARRAGE DU SERVICE
