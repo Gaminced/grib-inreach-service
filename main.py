@@ -529,11 +529,6 @@ def run_scheduled_tasks():
 # DÉMARRAGE DU SERVICE
 # ==========================================
 
-def run_flask_server():
-    """Démarre le serveur Flask dans un thread séparé"""
-    print(f"🌐 Démarrage du serveur HTTP sur le port {PORT}")
-    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
-
 def main():
     """Point d'entrée principal"""
     global last_status
@@ -549,17 +544,19 @@ def main():
     
     last_status = "🚀 Service démarré"
     
-    # Démarrage du serveur Flask dans un thread
-    flask_thread = Thread(target=run_flask_server, daemon=True)
-    flask_thread.start()
+    # CORRECTION: Démarrage des tâches planifiées dans un thread (non bloquant)
+    print("🔧 Démarrage du thread de planification...")
+    schedule_thread = Thread(target=run_scheduled_tasks, daemon=True)
+    schedule_thread.start()
     
-    # Attente que Flask démarre
+    # Attente que le thread démarre
     time.sleep(2)
-    print("✅ Serveur HTTP démarré avec succès\n")
+    print("✅ Thread de planification démarré avec succès\n")
     
-    # Démarrage des tâches planifiées (bloquant)
+    # Démarrage du serveur Flask (bloquant - doit être en dernier)
+    print(f"🌐 Démarrage du serveur HTTP sur le port {PORT}...")
     try:
-        run_scheduled_tasks()
+        app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
     except KeyboardInterrupt:
         print("\n🛑 Arrêt du service demandé")
         last_status = "🛑 Service arrêté"
