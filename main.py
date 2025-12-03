@@ -105,10 +105,15 @@ def status():
     """Statut détaillé du service"""
     return jsonify({
         "service": "GRIB InReach Service",
-        "status": last_status,
-        "last_check_time": str(last_check_time),
+        "status": "running",
+        "current_status": last_status,
+        "last_check_time": str(last_check_time) if last_check_time else "Aucune vérification encore",
         "garmin_username": GARMIN_USERNAME if GARMIN_USERNAME else "Non configuré",
-        "running": True
+        "sendgrid_configured": "✅ Oui" if os.environ.get('SENDGRID_API_KEY') else "❌ Non",
+        "verification_frequency": "Toutes les heures",
+        "next_check": "Dans moins d'1 heure" if last_check_time else "Imminent",
+        "service_active_since": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "instructions": "Le service vérifie automatiquement les emails toutes les heures. Consultez les logs Render pour plus de détails."
     })
 
 # ==========================================
@@ -483,18 +488,23 @@ def process_grib_workflow():
 
 def run_scheduled_tasks():
     """Exécute les tâches planifiées"""
-    print("⏰ Planification : Vérification toutes les heures")
+    print("\n" + "="*60)
+    print("⏰ PLANIFICATION AUTOMATIQUE")
+    print("="*60)
+    print("📅 Fréquence : Vérification toutes les heures")
     print("🔧 Thread de planification démarré")
+    print("="*60 + "\n")
     
     try:
         # Planification toutes les heures
         schedule.every(1).hours.do(process_grib_workflow)
-        print("✅ Planification configurée")
+        print("✅ Planification configurée : prochaine vérification dans 1 heure")
         
         # Exécution immédiate au démarrage
-        print("🚀 Lancement de la première vérification...")
+        print("🚀 Lancement de la première vérification immédiate...\n")
         process_grib_workflow()
-        print("✅ Première vérification terminée")
+        print("\n✅ Première vérification terminée")
+        print(f"⏰ Prochaine vérification automatique : dans 1 heure\n")
         
     except Exception as e:
         print(f"❌ ERREUR dans la première vérification: {e}")
@@ -502,7 +512,9 @@ def run_scheduled_tasks():
         traceback.print_exc()
     
     # Boucle de vérification du planificateur
-    print("🔄 Entrée dans la boucle de planification...")
+    print("🔄 Service actif - Vérifications automatiques toutes les heures")
+    print("=" * 60 + "\n")
+    
     while True:
         try:
             schedule.run_pending()
