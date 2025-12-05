@@ -496,9 +496,17 @@ def run_scheduled_tasks():
     print("="*60 + "\n")
     
     try:
-        # Planification toutes les heures
+        # Planification toutes les heures pour le GRIB
         schedule.every(1).hours.do(process_grib_workflow)
+        
+        # Planification d'un heartbeat toutes les 10 minutes
+        def heartbeat():
+            print(f"💓 Heartbeat - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Service actif")
+        
+        schedule.every(10).minutes.do(heartbeat)
+        
         print("✅ Planification configurée : prochaine vérification dans 1 heure")
+        print("✅ Heartbeat configuré : toutes les 10 minutes")
         
         # Exécution immédiate au démarrage
         print("🚀 Lancement de la première vérification immédiate...\n")
@@ -513,6 +521,7 @@ def run_scheduled_tasks():
     
     # Boucle de vérification du planificateur
     print("🔄 Service actif - Vérifications automatiques toutes les heures")
+    print("💓 Heartbeat actif - Signal toutes les 10 minutes")
     print("=" * 60 + "\n")
     
     while True:
@@ -554,18 +563,4 @@ def main():
     print("✅ Thread de planification démarré avec succès\n")
     
     # Démarrage du serveur Flask (bloquant - doit être en dernier)
-    print(f"🌐 Démarrage du serveur HTTP sur le port {PORT}...")
-    try:
-        app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
-    except KeyboardInterrupt:
-        print("\n🛑 Arrêt du service demandé")
-        last_status = "🛑 Service arrêté"
-        sys.exit(0)
-    except Exception as e:
-        print(f"\n❌ Erreur fatale: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
+    print(f"🌐 Démarrage du serveur HTTP sur le port
