@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
--- coding: utf-8 --
+#-- coding: utf-8 --
 
 """ Version corrigée de main.pi Objectif : garantir l'envoi des messages vers Garmin inReach EN UTILISANT STRICTEMENT la même méthode que main.working.without.cloud.request.py
 
