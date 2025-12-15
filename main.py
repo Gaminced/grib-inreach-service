@@ -1056,7 +1056,7 @@ def run_scheduled_tasks():
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("? DEMARRAGE SERVICE GRIB INREACH + MULTI-AI")
+    print("? DEMARRAGE SERVICE GRIB INREACH + MULTI-AI v2")
     print("="*60)
     print(f"? {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"? Email: {GARMIN_USERNAME}")
