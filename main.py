@@ -18,6 +18,13 @@ VERSION_DATE = "2025-12-15"
 #  2.0.0 (2025-12-14): Migration vers nouvelle URL inReach (inreachlink.com)
 #  1.0.0 (2025-12-01): Version initiale
 
+import os; os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/.browsers'
+
+import json
+import logging
+# ... reste du code
+
+
 import os
 import sys
 import time
