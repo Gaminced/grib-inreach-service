@@ -1,8 +1,10 @@
-# main.py - Version 2.3.1
+# main.py - Version 2.3.2
 # Date: 2025-12-19
 # Changements: Suppression configuration PLAYWRIGHT_BROWSERS_PATH (utilise path par défaut)
 
+
 import os
+os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/browsers'
 import json
 import logging
 from datetime import datetime
