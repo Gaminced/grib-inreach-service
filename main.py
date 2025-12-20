@@ -7,7 +7,7 @@ import os
 os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/browsers'
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify
 from anthropic import Anthropic
 from playwright.sync_api import sync_playwright
@@ -280,7 +280,7 @@ def health():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'timestamp': datetime.now(datetime.UTC).isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'active_conversations': len(conversations)
     }), 200
 
