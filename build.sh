@@ -4,6 +4,10 @@ usr/bin/env bash
 # Changements: Copie Chromium vers projet persistant
 set -o errexit
 
+# FORCER réinstallation (vider cache)
+rm -rf .venv
+pip cache purge
+
 pip install --upgrade pip
 pip install -r requirements.txt
 
