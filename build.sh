@@ -1,12 +1,8 @@
-usr/bin/env bash
-# build.sh - Version 2.4.1
+#!/usr/bin/env bash
+# build.sh - Version 2.4.2
 # Date: 2025-12-20
 # Changements: Copie Chromium vers projet persistant
 set -o errexit
-
-# FORCER réinstallation (vider cache)
-rm -rf .venv
-pip cache purge
 
 pip install --upgrade pip
 pip install -r requirements.txt
