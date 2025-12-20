@@ -28,9 +28,10 @@ def send_via_playwright_inreachlink(url, messages):
         try:
             # Lancer navigateur
             browser = p.chromium.launch(
-                headless=True,
-                args=['--no-sandbox', '--disable-setuid-sandbox']
-            )
+    headless=True,
+    args=['--no-sandbox', '--disable-setuid-sandbox'],
+    executable_path='/opt/render/project/src/browsers/chromium-1091/chrome-linux/chrome'
+  )
             context = browser.new_context()
             page = context.new_page()
             
