@@ -1,4 +1,4 @@
-# inreach_sender.py - v1.1
+# inreach_sender.py - v1.2
 """Module pour envoyer des messages via Garmin inReach - Playwright + POST"""
 
 import time
