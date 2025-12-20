@@ -1,4 +1,4 @@
-# inreach_sender.py - v1.2
+# inreach_sender.py - v1.3
 """Module pour envoyer des messages via Garmin inReach - Playwright + POST"""
 
 import time
@@ -99,21 +99,24 @@ def send_via_playwright_inreachlink(url, messages):
             success_count = 0
             
             # 4. Envoyer chaque message
-            for i, message in enumerate(messages, 1):
-                try:
-                    print(f"   📤 Message {i}/{len(messages)}: {len(message)} chars")
-                    
-                    # Trouver textarea (plusieurs sélecteurs possibles)
-                    textarea = None
-                    try:
-                        textarea = page.locator('textarea[placeholder*="message"], textarea[placeholder*="Message"], textarea').first
-                        textarea.wait_for(state='visible', timeout=5000)
-                    except:
-                        print(f"   ⚠️  Textarea non trouvé avec placeholder, essai générique...")
-                        textarea = page.locator('textarea').first
-                    
-                    # Remplir le message
-                    textarea.fill(message)
+for i, message in enumerate(messages, 1):
+    try:
+        print(f"   📤 Message {i}/{len(messages)}: {len(message)} chars")
+        
+        # IMPORTANT: Attendre que la page soit prête entre chaque message
+        page.wait_for_load_state('networkidle', timeout=10000)
+        time.sleep(2)
+        
+        # Chercher textarea à CHAQUE fois (il peut être recréé après envoi)
+        textarea = page.locator('textarea').first
+        textarea.wait_for(state='visible', timeout=10000)
+        
+        # Vider d'abord le textarea (au cas où)
+        textarea.fill('')
+        time.sleep(0.5)
+        
+        # Remplir le message
+        textarea.fill(message)
                     print(f"   ✍️  Message rempli")
                     time.sleep(1)
                     
