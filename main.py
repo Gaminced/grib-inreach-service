@@ -1,4 +1,4 @@
-# main.py - Version 2.5.0
+# main.py - Version 2.5.1
 # Date: 2025-12-20
 # Changements: Lazy initialization client Anthropic pour éviter erreur proxies
 
@@ -280,7 +280,7 @@ def health():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(datetime.UTC).isoformat(),
         'active_conversations': len(conversations)
     }), 200
 
