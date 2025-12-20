@@ -1,5 +1,5 @@
 usr/bin/env bash
-# build.sh - Version 2.3.2
+# build.sh - Version 2.4.1
 # Date: 2025-12-20
 # Changements: Copie Chromium vers projet persistant
 set -o errexit
@@ -20,4 +20,4 @@ cp -r ~/.cache/ms-playwright/* /opt/render/project/src/browsers/ 2>/dev/null || 
 cp -r /opt/render/.cache/ms-playwright/* /opt/render/project/src/browsers/ 2>/dev/null || \
 echo "Installation Chromium standard"
 
-echo "Build terminé"
+echo "Build terminé - anthropic 0.34.0 installé"
