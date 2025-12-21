@@ -1,5 +1,5 @@
-# inreach_sender.py - v3.1.3
-"""Module envoi inReach - Recherche dynamique tous boutons Send*"""
+# inreach_sender.py - v3.2.0
+"""Module envoi inReach - Version optimisée et nettoyée"""
 
 import time
 import requests
@@ -13,10 +13,7 @@ from config import (GARMIN_USERNAME, GARMIN_PASSWORD, SENDGRID_API_KEY,
 def send_via_playwright_inreachlink(url, messages):
     """
     Envoie via Playwright pour URLs inreachlink.com
-    RECHERCHE DYNAMIQUE:
-    - Détecte TOUS les boutons commençant par "Send" (Reply, Message, etc)
-    - Clic sur le premier trouvé pour ouvrir le formulaire
-    - Remplissage et envoi
+    Gestion dynamique des boutons Send Reply / Send Message
     """
     print(f"🎭 PLAYWRIGHT inReachLink: {len(messages)} messages", flush=True)
     print(f"   URL: {url}", flush=True)
@@ -31,12 +28,12 @@ def send_via_playwright_inreachlink(url, messages):
             context = browser.new_context()
             page = context.new_page()
             
-            # 1. Charger page
+            # 1. Chargement initial
             print("1. 🌐 Chargement inReachLink...", flush=True)
             page.goto(url, wait_until='networkidle', timeout=PLAYWRIGHT_TIMEOUT)
             time.sleep(2)
             
-            # 2. Login si nécessaire
+            # 2. Login Garmin si nécessaire
             if 'sso.garmin.com' in page.url or page.locator('input[type="email"]').count() > 0:
                 print("2. 🔐 Login Garmin...", flush=True)
                 
@@ -58,124 +55,105 @@ def send_via_playwright_inreachlink(url, messages):
                 
                 print("   ✅ Login terminé", flush=True)
             else:
-                print("2. ⏭️  Pas de login", flush=True)
+                print("2. ⏭️  Pas de login nécessaire", flush=True)
             
-            # 3. Attendre que la page soit prête
+            # 3. Attente page prête
             print("3. ⏳ Attente page ready...", flush=True)
             time.sleep(2)
             print("   ✅ Page prête", flush=True)
             
-            # 4. Envoyer chaque message
+            # 4. Envoi des messages
             for i, message in enumerate(messages, 1):
                 print(f"\n{'─'*50}", flush=True)
                 print(f"📤 Message {i}/{len(messages)}", flush=True)
                 print(f"{'─'*50}", flush=True)
                 
                 try:
+                    # Délai entre messages
                     if i > 1:
-                        print(f"⏳ Délai {DELAY_BETWEEN_MESSAGES}s entre messages...", flush=True)
+                        print(f"⏳ Délai {DELAY_BETWEEN_MESSAGES}s...", flush=True)
                         time.sleep(DELAY_BETWEEN_MESSAGES)
                         
-                        # ATTENTE SUPPLÉMENTAIRE après envoi précédent
-                        print("⏳ Attente stabilisation page...", flush=True)
+                        # Attente stabilisation après envoi précédent
+                        print("⏳ Stabilisation page...", flush=True)
                         page.wait_for_load_state('networkidle', timeout=15000)
-                        time.sleep(3)
+                        time.sleep(2)
                     
-                    # ═══════════════════════════════════════════════════
-                    # ÉTAPE A: RECHERCHE DYNAMIQUE de TOUS boutons Send*
-                    # Détecte: "Send Reply", "Send Message", etc.
-                    # ═══════════════════════════════════════════════════
-                    print("🔍 Recherche boutons 'Send*'...", flush=True)
-                    time.sleep(2)
-                    
-                    # Chercher TOUS les boutons contenant "Send" au début du texte
-                    # Patterns possibles: "Send Reply", "Send Message", "Send", etc.
-                    send_buttons = page.locator('button').filter(has_text="Send")
-                    
-                    # Compter combien de boutons "Send*" sont présents
-                    send_count = send_buttons.count()
-                    print(f"   🔢 {send_count} bouton(s) 'Send*' trouvé(s)", flush=True)
-                    
-                    # Lister tous les boutons trouvés pour debug
-                    if send_count > 0:
-                        for idx in range(send_count):
-                            btn_text = send_buttons.nth(idx).text_content()
-                            print(f"      - Bouton {idx+1}: '{btn_text}'", flush=True)
-                    
-                    # Chercher spécifiquement les boutons d'ouverture de formulaire
-                    # (pas le bouton final "Send" dans le formulaire)
-                    open_form_btn = None
+                    # Recherche bouton d'ouverture formulaire
+                    print("🔍 Recherche boutons Send*...", flush=True)
+                    time.sleep(1)
                     
                     # Essayer "Send Reply" en priorité
                     send_reply = page.locator('button:has-text("Send Reply")')
+                    send_msg = page.locator('button:has-text("Send Message")')
+                    
                     if send_reply.count() > 0:
-                        open_form_btn = send_reply.first
-                        print("   ✅ Bouton 'Send Reply' trouvé", flush=True)
+                        print("   ✅ 'Send Reply' trouvé → clic", flush=True)
+                        send_reply.first.wait_for(state="visible", timeout=10000)
+                        send_reply.first.click()
+                        time.sleep(1.5)
+                    elif send_msg.count() > 0:
+                        print("   ✅ 'Send Message' trouvé → clic", flush=True)
+                        send_msg.first.wait_for(state="visible", timeout=10000)
+                        send_msg.first.click()
+                        time.sleep(1.5)
                     else:
-                        # Essayer "Send Message"
-                        send_msg = page.locator('button:has-text("Send Message")')
-                        if send_msg.count() > 0:
-                            open_form_btn = send_msg.first
-                            print("   ✅ Bouton 'Send Message' trouvé", flush=True)
+                        print("   ⏭️  Formulaire déjà ouvert", flush=True)
                     
-                    # Si bouton d'ouverture trouvé, cliquer
-                    if open_form_btn:
-                        print("   🖱️  Clic pour ouvrir formulaire...", flush=True)
-                        open_form_btn.wait_for(state="visible", timeout=10000)
-                        open_form_btn.click()
-                        time.sleep(2)
-                    else:
-                        print("   ⏭️  Pas de bouton ouverture → formulaire déjà ouvert", flush=True)
-                    
-                    # ═══════════════════════════════════════════════════
-                    # ÉTAPE B: REMPLIR le textarea
-                    # ═══════════════════════════════════════════════════
-                    print("📝 Attente textarea...", flush=True)
-                    
-                    # Attendre que textarea soit visible
+                    # Attente et remplissage textarea
+                    print("📝 Remplissage...", flush=True)
                     textarea = page.locator("textarea").first
-                    textarea.wait_for(state="visible", timeout=30000)
-                    time.sleep(1)
                     
-                    print("📝 Remplissage message...", flush=True)
+                    # Attente avec retry si nécessaire
+                    try:
+                        textarea.wait_for(state="visible", timeout=15000)
+                    except:
+                        # Si timeout, attendre encore un peu et réessayer
+                        print("   ⏳ Attente supplémentaire...", flush=True)
+                        time.sleep(3)
+                        textarea.wait_for(state="visible", timeout=10000)
+                    
                     textarea.fill("")
-                    time.sleep(0.5)
+                    time.sleep(0.3)
                     textarea.fill(message)
-                    time.sleep(1)
-                    
-                    # ═══════════════════════════════════════════════════
-                    # ÉTAPE C: CLIQUER sur bouton "Send" FINAL
-                    # (le dernier "Send" trouvé = celui dans le formulaire)
-                    # ═══════════════════════════════════════════════════
-                    print("🚀 Recherche bouton Send final...", flush=True)
-                    
-                    # Prendre le DERNIER bouton "Send" = celui du formulaire
-                    send_final = page.locator('button:has-text("Send")').last
-                    send_final.wait_for(state="visible", timeout=15000)
                     time.sleep(0.5)
                     
-                    print("🚀 Clic bouton Send...", flush=True)
+                    # Clic bouton Send final
+                    print("🚀 Envoi...", flush=True)
+                    send_final = page.locator('button:has-text("Send")').last
+                    send_final.wait_for(state="visible", timeout=10000)
                     send_final.click()
                     
-                    # Attendre fermeture du formulaire
-                    print("⏳ Attente fermeture formulaire...", flush=True)
-                    page.wait_for_selector("textarea", state="detached", timeout=20000)
-                    time.sleep(2)
+                    # Attente fermeture formulaire avec retry
+                    print("⏳ Fermeture...", flush=True)
+                    try:
+                        page.wait_for_selector("textarea", state="detached", timeout=15000)
+                    except:
+                        # Si timeout, vérifier quand même si fermé
+                        time.sleep(2)
+                        if page.locator("textarea").count() > 0:
+                            # Textarea encore présent, attendre encore
+                            page.wait_for_selector("textarea", state="detached", timeout=10000)
                     
+                    time.sleep(1)
                     print(f"   ✅ Message {i} envoyé", flush=True)
                     
                 except Exception as e:
                     print(f"   ❌ Erreur message {i}: {e}", flush=True)
                     import traceback
                     traceback.print_exc()
+                    # Continuer avec le message suivant
                     continue
             
-            print(f"\n✅ Playwright terminé - {len(messages)} messages traités", flush=True)
+            print(f"\n{'='*50}", flush=True)
+            print(f"✅ Envoi terminé: {len(messages)} messages", flush=True)
+            print(f"{'='*50}\n", flush=True)
+            
             browser.close()
             return True
             
         except Exception as e:
-            print(f"❌ Erreur Playwright globale: {e}", flush=True)
+            print(f"❌ Erreur globale Playwright: {e}", flush=True)
             import traceback
             traceback.print_exc()
             if 'browser' in locals():
@@ -192,21 +170,30 @@ def send_via_post_garmin(url, messages):
         guid = parse_qs(parsed.query).get('extId', [None])[0]
         
         if not guid:
+            print("❌ GUID non trouvé dans l'URL", flush=True)
             return False
         
         success_count = 0
         for i, message in enumerate(messages, 1):
-            data = {'ReplyMessage': message, 'Guid': guid, 'ReplyAddress': GARMIN_USERNAME}
+            data = {
+                'ReplyMessage': message,
+                'Guid': guid,
+                'ReplyAddress': GARMIN_USERNAME
+            }
+            
             response = requests.post(url, headers=INREACH_HEADERS, data=data, timeout=30)
             
             if response.status_code == 200:
                 success_count += 1
                 print(f"   ✅ Message {i}/{len(messages)}", flush=True)
+            else:
+                print(f"   ❌ Message {i} - HTTP {response.status_code}", flush=True)
             
             if i < len(messages):
                 time.sleep(DELAY_BETWEEN_MESSAGES)
         
         return success_count == len(messages)
+        
     except Exception as e:
         print(f"❌ Erreur POST: {e}", flush=True)
         return False
@@ -215,6 +202,7 @@ def send_via_post_garmin(url, messages):
 def send_via_email(reply_email, messages):
     """Envoie via email SendGrid"""
     if not SENDGRID_API_KEY:
+        print("❌ SENDGRID_API_KEY non configurée", flush=True)
         return False
     
     try:
@@ -222,7 +210,12 @@ def send_via_email(reply_email, messages):
         from sendgrid.helpers.mail import Mail
         
         sg = SendGridAPIClient(SENDGRID_API_KEY)
-        combined = "\n\n---\n\n".join([f"Message {i}/{len(messages)}:\n{msg}" for i, msg in enumerate(messages, 1)])
+        
+        # Combiner tous les messages
+        combined = "\n\n---\n\n".join([
+            f"Message {i}/{len(messages)}:\n{msg}" 
+            for i, msg in enumerate(messages, 1)
+        ])
         
         email_content = Mail(
             from_email=GARMIN_USERNAME,
@@ -232,27 +225,41 @@ def send_via_email(reply_email, messages):
         )
         
         response = sg.send(email_content)
-        return response.status_code in [200, 201, 202]
+        
+        if response.status_code in [200, 201, 202]:
+            print(f"✅ Email envoyé ({len(messages)} messages)", flush=True)
+            return True
+        else:
+            print(f"❌ Email erreur HTTP {response.status_code}", flush=True)
+            return False
+            
     except Exception as e:
         print(f"❌ Erreur email: {e}", flush=True)
         return False
 
 
 def send_to_inreach(url, messages, reply_email=None):
-    """Routeur intelligent pour envoi inReach"""
+    """
+    Routeur intelligent pour envoi inReach
+    Détecte automatiquement la méthode selon l'URL
+    """
     print(f"\n{'='*70}", flush=True)
     print(f"📤 ENVOI INREACH: {len(messages)} messages", flush=True)
     print(f"{'='*70}\n", flush=True)
     
+    # Choix de la méthode selon l'URL
     if 'inreachlink.com' in url:
-        print("🎯 Mode: PLAYWRIGHT", flush=True)
+        print("🎯 Mode: PLAYWRIGHT (inreachlink.com)", flush=True)
         return send_via_playwright_inreachlink(url, messages)
+        
     elif 'garmin.com' in url and 'textmessage' in url and 'extId' in url:
-        print("🎯 Mode: POST", flush=True)
+        print("🎯 Mode: POST (explore.garmin.com)", flush=True)
         return send_via_post_garmin(url, messages)
+        
     elif reply_email:
-        print("🎯 Mode: EMAIL", flush=True)
+        print("🎯 Mode: EMAIL (SendGrid)", flush=True)
         return send_via_email(reply_email, messages)
+        
     else:
-        print(f"❌ URL non supportée", flush=True)
+        print(f"❌ URL non supportée: {url}", flush=True)
         return False
