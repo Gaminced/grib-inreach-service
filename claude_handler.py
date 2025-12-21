@@ -1,103 +1,223 @@
-# claude_handler.py V1.0
-"""Module pour gérer les requêtes Claude AI"""
+# claude_handler.py - v1.0
+"""Handler pour conversations avec Claude AI via inReach"""
 
-import requests
-from config import ANTHROPIC_API_KEY
-from utils import split_into_messages
+import os
+import anthropic
+from typing import Optional
 
 
-def query_claude(prompt, max_words=50):
+def handle_claude_request(user_message: str, conversation_history: Optional[list] = None) -> str:
     """
-    Envoie une requête à l'API Claude d'Anthropic
+    Traite une requête Claude et retourne la réponse
     
     Args:
-        prompt: Question à poser
-        max_words: Nombre max de mots pour la réponse
-    
+        user_message: Message de l'utilisateur
+        conversation_history: Historique optionnel des messages précédents
+        
     Returns:
-        list: Messages découpés avec numérotation [C X/Y] et coût
+        Réponse de Claude (texte brut)
     """
-    if not ANTHROPIC_API_KEY:
-        return ["Claude AI non configuré. Définir ANTHROPIC_API_KEY."]
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+    
+    if not api_key:
+        return "❌ ANTHROPIC_API_KEY non configurée"
     
     try:
-        print(f"🤖 Claude: {prompt[:50]}...")
+        client = anthropic.Anthropic(api_key=api_key)
         
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
+        # Construire l'historique de conversation
+        messages = []
         
-        system_msg = f"You are a helpful assistant for sailors at sea. Provide clear, practical answers in approximately {max_words} words."
+        if conversation_history:
+            messages.extend(conversation_history)
         
-        data = {
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": max_words * 3,
-            "system": system_msg,
-            "messages": [{
-                "role": "user",
-                "content": prompt
-            }],
-            "temperature": 0.7
-        }
+        # Ajouter le message actuel
+        messages.append({
+            "role": "user",
+            "content": user_message
+        })
         
-        response = requests.post(url, headers=headers, json=data, timeout=30)
+        # Appel API Claude
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",  # Modèle le plus récent
+            max_tokens=1024,  # Limité pour inReach (messages courts)
+            messages=messages
+        )
         
-        if response.status_code == 200:
-            result = response.json()
-            answer = result['content'][0]['text'].strip()
-            
-            # Calcul du coût
-            usage = result.get('usage', {})
-            input_tokens = usage.get('input_tokens', 0)
-            output_tokens = usage.get('output_tokens', 0)
-            
-            input_cost = (input_tokens / 1_000_000) * 3.0
-            output_cost = (output_tokens / 1_000_000) * 15.0
-            total_cost = input_cost + output_cost
-            
-            print(f"✅ Claude: {len(answer)} chars, ${total_cost:.6f}")
-            print(f"   Tokens: {input_tokens} in + {output_tokens} out")
-            
-            # Découper avec 95 chars max (120 - overhead)
-            messages = split_into_messages(answer, max_chars_per_message=95)
-            
-            # Ajouter numérotation [C X/Y] et coût
-            total_msgs = len(messages)
-            numbered_messages = []
-            
-            for i, msg in enumerate(messages, 1):
-                if i == total_msgs:
-                    numbered_msg = f"[C {i}/{total_msgs}] {msg} [${total_cost:.4f}]"
-                else:
-                    numbered_msg = f"[C {i}/{total_msgs}] {msg}"
-                
-                # Vérification limite 120 chars
-                if len(numbered_msg) > 120:
-                    excess = len(numbered_msg) - 117
-                    msg = msg[:-excess]
-                    if i == total_msgs:
-                        numbered_msg = f"[C {i}/{total_msgs}] {msg}... [${total_cost:.4f}]"
-                    else:
-                        numbered_msg = f"[C {i}/{total_msgs}] {msg}..."
-                
-                numbered_messages.append(numbered_msg)
-            
-            print(f"📨 Claude: {total_msgs} message(s)")
-            for i, msg in enumerate(numbered_messages, 1):
-                print(f"   [{i}/{total_msgs}]: {len(msg)} chars")
-            
-            return numbered_messages
+        # Extraire le texte de la réponse
+        if response.content and len(response.content) > 0:
+            return response.content[0].text
         else:
-            error = f"Erreur Claude: {response.status_code}"
-            print(f"❌ {error} - {response.text}")
-            return [error]
+            return "❌ Réponse vide de Claude"
             
+    except anthropic.APIError as e:
+        return f"❌ Erreur API Claude: {e}"
     except Exception as e:
-        error = f"Erreur: {str(e)}"
-        print(f"❌ Claude: {error}")
-        import traceback
-        traceback.print_exc()
-        return [error]
+        return f"❌ Erreur inattendue: {e}"
+
+
+def handle_claude_request_with_context(
+    user_message: str,
+    system_prompt: Optional[str] = None,
+    max_tokens: int = 1024
+) -> str:
+    """
+    Requête Claude avec prompt système personnalisé
+    
+    Args:
+        user_message: Message utilisateur
+        system_prompt: Instructions système optionnelles
+        max_tokens: Limite de tokens (défaut: 1024)
+        
+    Returns:
+        Réponse de Claude
+    """
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+    
+    if not api_key:
+        return "❌ ANTHROPIC_API_KEY non configurée"
+    
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        # Paramètres de base
+        params = {
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": max_tokens,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ]
+        }
+        
+        # Ajouter prompt système si fourni
+        if system_prompt:
+            params["system"] = system_prompt
+        
+        response = client.messages.create(**params)
+        
+        if response.content and len(response.content) > 0:
+            return response.content[0].text
+        else:
+            return "❌ Réponse vide de Claude"
+            
+    except anthropic.APIError as e:
+        return f"❌ Erreur API Claude: {e}"
+    except Exception as e:
+        return f"❌ Erreur inattendue: {e}"
+
+
+def handle_claude_maritime_assistant(user_message: str) -> str:
+    """
+    Assistant maritime spécialisé avec Claude
+    Optimisé pour questions nautiques, météo, navigation
+    
+    Args:
+        user_message: Question de l'utilisateur
+        
+    Returns:
+        Réponse de Claude spécialisée maritime
+    """
+    system_prompt = """Tu es un assistant maritime expert spécialisé pour les navigateurs en mer.
+
+Contexte:
+- L'utilisateur est en mer sur un voilier
+- Communications par satellite inReach (coûteuses, limitées)
+- Besoin de réponses CONCISES et PRÉCISES
+
+Domaines d'expertise:
+- Météo marine et interprétation GRIB
+- Navigation hauturière
+- Sécurité en mer
+- Manœuvres et gestion du bateau
+- Mécanique marine de base
+- Protocoles d'urgence
+
+IMPÉRATIF:
+- Réponses COURTES (max 160 caractères si possible)
+- Information essentielle UNIQUEMENT
+- Pas de bavardage
+- Vocabulaire maritime précis
+- Conseils pratiques et actionnables
+
+Si question hors contexte maritime: répondre brièvement que tu es spécialisé en navigation."""
+
+    return handle_claude_request_with_context(
+        user_message=user_message,
+        system_prompt=system_prompt,
+        max_tokens=512  # Limité pour réponses concises
+    )
+
+
+def split_long_response(response: str, max_length: int = 160) -> list:
+    """
+    Découpe une réponse longue en messages inReach (max 160 chars)
+    
+    Args:
+        response: Texte à découper
+        max_length: Longueur max par message (défaut: 160)
+        
+    Returns:
+        Liste de messages découpés
+    """
+    if len(response) <= max_length:
+        return [response]
+    
+    messages = []
+    words = response.split()
+    current_msg = ""
+    
+    for word in words:
+        # Vérifier si ajouter le mot dépasse la limite
+        test_msg = current_msg + " " + word if current_msg else word
+        
+        if len(test_msg) <= max_length:
+            current_msg = test_msg
+        else:
+            # Message plein, le sauvegarder et commencer nouveau
+            if current_msg:
+                messages.append(current_msg)
+            current_msg = word
+    
+    # Ajouter le dernier message
+    if current_msg:
+        messages.append(current_msg)
+    
+    return messages
+
+
+# === EXEMPLES D'UTILISATION ===
+
+if __name__ == "__main__":
+    # Test 1: Question simple
+    print("Test 1: Question simple")
+    print("-" * 50)
+    response = handle_claude_maritime_assistant(
+        "Que faire si le vent forcit à 35 nœuds?"
+    )
+    print(f"Réponse: {response}\n")
+    
+    # Test 2: Découpage long message
+    print("Test 2: Découpage message")
+    print("-" * 50)
+    long_response = "Voici une très longue réponse qui dépasse largement la limite de 160 caractères imposée par les messages satellite inReach et qui doit donc être découpée en plusieurs segments pour pouvoir être transmise correctement sans perdre d'information."
+    
+    segments = split_long_response(long_response, max_length=160)
+    for i, segment in enumerate(segments, 1):
+        print(f"Message {i}/{len(segments)}: {segment}")
+    
+    # Test 3: Conversation avec contexte
+    print("\nTest 3: Conversation avec historique")
+    print("-" * 50)
+    history = [
+        {"role": "user", "content": "Je suis au large des Galapagos"},
+        {"role": "assistant", "content": "Compris. Navigation Pacifique. Météo?"}
+    ]
+    
+    response = handle_claude_request(
+        user_message="Quel cap vers Easter Island?",
+        conversation_history=history
+    )
+    print(f"Réponse: {response}")
