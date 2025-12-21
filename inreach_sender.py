@@ -63,10 +63,10 @@ def send_via_playwright_inreachlink(url, messages):
 
             # 4. Envoi des messages
             for i, message in enumerate(messages, 1):
-    print(f"📤 Message {i}/{len(messages)}", flush=True)
+            print(f"📤 Message {i}/{len(messages)}", flush=True)
 
-    if i > 1:
-        time.sleep(DELAY_BETWEEN_MESSAGES)
+            if i > 1:
+            time.sleep(DELAY_BETWEEN_MESSAGES)
 
     # 🔑 OBLIGATOIRE : rouvrir le formulaire Reply / Send
     print("🔁 Ouverture formulaire Send/Reply...", flush=True)
