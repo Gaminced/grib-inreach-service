@@ -63,49 +63,42 @@ def send_via_playwright_inreachlink(url, messages):
 
             # 4. Envoi des messages
             for i, message in enumerate(messages, 1):
-                print(f"📤 Message {i}/{len(messages)}", flush=True)
+    print(f"📤 Message {i}/{len(messages)}", flush=True)
 
-                if i > 1:
-                    time.sleep(DELAY_BETWEEN_MESSAGES)
+    if i > 1:
+        time.sleep(DELAY_BETWEEN_MESSAGES)
 
-                textarea = page.locator("textarea").first
-                send_selector = 'button:has-text("Send"), input[type="submit"]'
+    # 🔑 OBLIGATOIRE : rouvrir le formulaire Reply / Send
+    print("🔁 Ouverture formulaire Send/Reply...", flush=True)
 
-                # Attendre textarea prêt
-                textarea.wait_for(state="visible", timeout=15000)
-                textarea.fill("")
-                time.sleep(0.5)
-                textarea.fill(message)
+    open_button = page.locator(
+        'button:has-text("Send"), button:has-text("Reply")'
+    ).first
 
-                # Re-détecter bouton Send
-                send_button = page.locator(send_selector).first
-                send_button.wait_for(state="visible", timeout=15000)
-                send_button.click()
+    open_button.wait_for(state="visible", timeout=15000)
+    open_button.click()
 
-                # 🔑 ATTENTE CRITIQUE : UI réarmée
-                try:
-                    page.wait_for_function(
-                        """
-                        () => {
-                            const btn = document.querySelector('button, input[type=submit]');
-                            return btn && !btn.disabled;
-                        }
-                        """,
-                        timeout=20000
-                    )
-                except TimeoutError:
-                    # Fallback : textarea vidé par Garmin
-                    page.wait_for_function(
-                        """
-                        () => {
-                            const ta = document.querySelector('textarea');
-                            return ta && ta.value === '';
-                        }
-                        """,
-                        timeout=20000
-                    )
+    # Attendre que le textarea APPARAISSE réellement
+    textarea = page.locator("textarea").first
+    textarea.wait_for(state="visible", timeout=20000)
 
-                print(f"✅ Message {i} envoyé", flush=True)
+    # Remplissage
+    textarea.fill("")
+    time.sleep(0.5)
+    textarea.fill(message)
+
+    # Bouton Send interne au formulaire
+    send_button = page.locator(
+        'button:has-text("Send"), input[type="submit"]'
+    ).last
+
+    send_button.wait_for(state="visible", timeout=15000)
+    send_button.click()
+
+    # Attendre fermeture du formulaire
+    page.wait_for_selector("textarea", state="detached", timeout=20000)
+
+    print(f"✅ Message {i} envoyé", flush=True)
 
             print("🎉 Tous les messages envoyés", flush=True)
             browser.close()
