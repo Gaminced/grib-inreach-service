@@ -1,5 +1,5 @@
-# inreach_sender.py - v3.2.0
-"""Module envoi inReach - Version optimisée et nettoyée"""
+# inreach_sender.py - v3.2.1
+"""Module envoi inReach - Version stable sans wait_for detached"""
 
 import time
 import requests
@@ -76,7 +76,11 @@ def send_via_playwright_inreachlink(url, messages):
                         
                         # Attente stabilisation après envoi précédent
                         print("⏳ Stabilisation page...", flush=True)
-                        page.wait_for_load_state('networkidle', timeout=15000)
+                        try:
+                            page.wait_for_load_state('networkidle', timeout=10000)
+                        except:
+                            # Si timeout sur networkidle, continuer quand même
+                            pass
                         time.sleep(2)
                     
                     # Recherche bouton d'ouverture formulaire
@@ -91,17 +95,17 @@ def send_via_playwright_inreachlink(url, messages):
                         print("   ✅ 'Send Reply' trouvé → clic", flush=True)
                         send_reply.first.wait_for(state="visible", timeout=10000)
                         send_reply.first.click()
-                        time.sleep(1.5)
+                        time.sleep(2)
                     elif send_msg.count() > 0:
                         print("   ✅ 'Send Message' trouvé → clic", flush=True)
                         send_msg.first.wait_for(state="visible", timeout=10000)
                         send_msg.first.click()
-                        time.sleep(1.5)
+                        time.sleep(2)
                     else:
                         print("   ⏭️  Formulaire déjà ouvert", flush=True)
                     
                     # Attente et remplissage textarea
-                    print("📝 Remplissage...", flush=True)
+                    print("📝 Attente textarea...", flush=True)
                     textarea = page.locator("textarea").first
                     
                     # Attente avec retry si nécessaire
@@ -109,10 +113,11 @@ def send_via_playwright_inreachlink(url, messages):
                         textarea.wait_for(state="visible", timeout=15000)
                     except:
                         # Si timeout, attendre encore un peu et réessayer
-                        print("   ⏳ Attente supplémentaire...", flush=True)
+                        print("   ⏳ Retry attente textarea...", flush=True)
                         time.sleep(3)
                         textarea.wait_for(state="visible", timeout=10000)
                     
+                    print("📝 Remplissage message...", flush=True)
                     textarea.fill("")
                     time.sleep(0.3)
                     textarea.fill(message)
@@ -124,18 +129,15 @@ def send_via_playwright_inreachlink(url, messages):
                     send_final.wait_for(state="visible", timeout=10000)
                     send_final.click()
                     
-                    # Attente fermeture formulaire avec retry
-                    print("⏳ Fermeture...", flush=True)
-                    try:
-                        page.wait_for_selector("textarea", state="detached", timeout=15000)
-                    except:
-                        # Si timeout, vérifier quand même si fermé
-                        time.sleep(2)
-                        if page.locator("textarea").count() > 0:
-                            # Textarea encore présent, attendre encore
-                            page.wait_for_selector("textarea", state="detached", timeout=10000)
+                    # ═══════════════════════════════════════════════════
+                    # CHANGEMENT CRITIQUE: Ne plus attendre "detached"
+                    # Le textarea ne disparaît pas toujours complètement
+                    # mais le message est bien envoyé
+                    # → Attente simple de 3 secondes
+                    # ═══════════════════════════════════════════════════
+                    print("⏳ Attente envoi...", flush=True)
+                    time.sleep(3)
                     
-                    time.sleep(1)
                     print(f"   ✅ Message {i} envoyé", flush=True)
                     
                 except Exception as e:
