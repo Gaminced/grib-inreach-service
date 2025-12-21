@@ -63,42 +63,42 @@ def send_via_playwright_inreachlink(url, messages):
 
             # 4. Envoi des messages
             for i, message in enumerate(messages, 1):
-            print(f"📤 Message {i}/{len(messages)}", flush=True)
+                print(f"📤 Message {i}/{len(messages)}", flush=True)
 
-            if i > 1:
-            time.sleep(DELAY_BETWEEN_MESSAGES)
+                if i > 1:
+                time.sleep(DELAY_BETWEEN_MESSAGES)
 
-    # 🔑 OBLIGATOIRE : rouvrir le formulaire Reply / Send
-    print("🔁 Ouverture formulaire Send/Reply...", flush=True)
+                # 🔑 OBLIGATOIRE : rouvrir le formulaire Reply / Send
+                print("🔁 Ouverture formulaire Send/Reply...", flush=True)
 
-    open_button = page.locator(
-        'button:has-text("Send"), button:has-text("Reply")'
-    ).first
-
-    open_button.wait_for(state="visible", timeout=15000)
-    open_button.click()
-
-    # Attendre que le textarea APPARAISSE réellement
-    textarea = page.locator("textarea").first
-    textarea.wait_for(state="visible", timeout=20000)
-
-    # Remplissage
-    textarea.fill("")
-    time.sleep(0.5)
-    textarea.fill(message)
-
-    # Bouton Send interne au formulaire
-    send_button = page.locator(
-        'button:has-text("Send"), input[type="submit"]'
-    ).last
-
-    send_button.wait_for(state="visible", timeout=15000)
-    send_button.click()
-
-    # Attendre fermeture du formulaire
-    page.wait_for_selector("textarea", state="detached", timeout=20000)
-
-    print(f"✅ Message {i} envoyé", flush=True)
+            open_button = page.locator(
+                'button:has-text("Send"), button:has-text("Reply")'
+            ).first
+        
+            open_button.wait_for(state="visible", timeout=15000)
+            open_button.click()
+        
+            # Attendre que le textarea APPARAISSE réellement
+            textarea = page.locator("textarea").first
+            textarea.wait_for(state="visible", timeout=20000)
+        
+            # Remplissage
+            textarea.fill("")
+            time.sleep(0.5)
+            textarea.fill(message)
+        
+            # Bouton Send interne au formulaire
+            send_button = page.locator(
+                'button:has-text("Send"), input[type="submit"]'
+            ).last
+        
+            send_button.wait_for(state="visible", timeout=15000)
+            send_button.click()
+        
+            # Attendre fermeture du formulaire
+            page.wait_for_selector("textarea", state="detached", timeout=20000)
+        
+            print(f"✅ Message {i} envoyé", flush=True)
 
             print("🎉 Tous les messages envoyés", flush=True)
             browser.close()
