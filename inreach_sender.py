@@ -1,5 +1,5 @@
-# inreach_sender.py - v3.1.0
-"""Module envoi inReach - Gestion dynamique boutons Send Reply / Dismiss"""
+# inreach_sender.py - v3.1.1
+"""Module envoi inReach - Gestion dynamique bouton Send Reply à chaque message"""
 
 import time
 import requests
@@ -14,9 +14,8 @@ def send_via_playwright_inreachlink(url, messages):
     """
     Envoie via Playwright pour URLs inreachlink.com
     GESTION DYNAMIQUE:
-    - Détecte "Send Reply" si présent → clic avant remplissage
-    - Sinon entre directement le message
-    - Après envoi: vérifie et clique "Dismiss" si présent
+    - Pour chaque message: détecte "Send Reply" si présent → clic avant remplissage
+    - Sinon entre directement le message dans le textarea
     """
     print(f"🎭 PLAYWRIGHT inReachLink: {len(messages)} messages", flush=True)
     print(f"   URL: {url}", flush=True)
@@ -63,19 +62,29 @@ def send_via_playwright_inreachlink(url, messages):
             # 3. Attendre que la page soit prête
             print("3. ⏳ Attente page ready...", flush=True)
             time.sleep(2)
+            print("   ✅ Page prête", flush=True)
             
             # 4. Envoyer chaque message
             for i, message in enumerate(messages, 1):
-                print(f"\n📤 Message {i}/{len(messages)}", flush=True)
+                print(f"\n{'─'*50}", flush=True)
+                print(f"📤 Message {i}/{len(messages)}", flush=True)
+                print(f"{'─'*50}", flush=True)
                 
                 try:
                     if i > 1:
+                        print(f"⏳ Délai {DELAY_BETWEEN_MESSAGES}s entre messages...", flush=True)
                         time.sleep(DELAY_BETWEEN_MESSAGES)
                     
                     # ═══════════════════════════════════════════════════
                     # ÉTAPE A: RECHERCHE DYNAMIQUE du bouton "Send Reply"
+                    # Cette recherche se fait POUR CHAQUE MESSAGE
+                    # Après un envoi, la page peut revenir à l'état initial
+                    # donc il faut rechercher à nouveau "Send Reply"
                     # ═══════════════════════════════════════════════════
                     print("🔍 Recherche bouton 'Send Reply'...", flush=True)
+                    
+                    # Attendre un peu que la page se stabilise
+                    time.sleep(1)
                     
                     # Chercher spécifiquement "Send Reply" (texte exact)
                     send_reply_btn = page.locator('button:has-text("Send Reply")')
@@ -119,24 +128,6 @@ def send_via_playwright_inreachlink(url, messages):
                     time.sleep(1)
                     
                     print(f"   ✅ Message {i} envoyé", flush=True)
-                    
-                    # ═══════════════════════════════════════════════════
-                    # ÉTAPE D: VÉRIFIER bouton "Dismiss" après envoi
-                    # ═══════════════════════════════════════════════════
-                    print("🔔 Recherche notification 'Dismiss'...", flush=True)
-                    
-                    # Attendre un peu que la notification apparaisse
-                    time.sleep(1.5)
-                    
-                    # Chercher bouton Dismiss (texte exact ou aria-label)
-                    dismiss_btn = page.locator('button:has-text("Dismiss"), button[aria-label*="Dismiss"]')
-                    
-                    if dismiss_btn.count() > 0:
-                        print("   ✅ Notification trouvée → clic Dismiss", flush=True)
-                        dismiss_btn.first.click()
-                        time.sleep(0.5)
-                    else:
-                        print("   ⏭️  Pas de notification Dismiss", flush=True)
                     
                 except Exception as e:
                     print(f"   ❌ Erreur message {i}: {e}", flush=True)
