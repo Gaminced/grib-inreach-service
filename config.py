@@ -1,4 +1,4 @@
-# config.py - v3.0.0
+# config.py - v3.0.1
 """Configuration centralisée pour GRIB inReach Service"""
 
 import os
@@ -6,7 +6,7 @@ import os
 # ==========================================
 # INFORMATIONS VERSION
 # ==========================================
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 VERSION_DATE = "2025-12-21"
 SERVICE_NAME = "GRIB inReach Service"
 
@@ -30,7 +30,7 @@ IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993
 
 SAILDOCS_EMAIL = "query@saildocs.com"
-SAILDOCS_RESPONSE_EMAIL = "query@saildocs.com"
+SAILDOCS_RESPONSE_EMAIL = "query-reply@saildocs.com"  # CRITIQUE: Réponses viennent de query-REPLY
 
 # ==========================================
 # INREACH CONFIGURATION
