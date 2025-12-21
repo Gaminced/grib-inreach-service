@@ -101,12 +101,6 @@ def send_via_playwright_inreachlink(url, messages):
                 page.wait_for_selector("textarea", state="detached", timeout=20000)
 
                 print(f"✅ Message {i} envoyé", flush=True)
-                
-                except Exception as e:
-                    print(f"      ❌ Erreur message {i}: {e}", flush=True)
-                    import traceback
-                    traceback.print_exc()
-                    continue
             
             print(f"\n✅ Playwright terminé - {len(messages)} messages traités", flush=True)
             browser.close()
