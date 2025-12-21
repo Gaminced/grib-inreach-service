@@ -1,5 +1,5 @@
-# inreach_sender.py - v3.0.2
-"""Module envoi inReach - Timings Playwright optimisés"""
+# inreach_sender.py - v3.1.0
+"""Module envoi inReach - Gestion dynamique boutons Send Reply / Dismiss"""
 
 import time
 import requests
@@ -13,7 +13,10 @@ from config import (GARMIN_USERNAME, GARMIN_PASSWORD, SENDGRID_API_KEY,
 def send_via_playwright_inreachlink(url, messages):
     """
     Envoie via Playwright pour URLs inreachlink.com
-    OPTIMISÉ: Timings ajustés pour éviter timeouts
+    GESTION DYNAMIQUE:
+    - Détecte "Send Reply" si présent → clic avant remplissage
+    - Sinon entre directement le message
+    - Après envoi: vérifie et clique "Dismiss" si présent
     """
     print(f"🎭 PLAYWRIGHT inReachLink: {len(messages)} messages", flush=True)
     print(f"   URL: {url}", flush=True)
@@ -57,57 +60,96 @@ def send_via_playwright_inreachlink(url, messages):
             else:
                 print("2. ⏭️  Pas de login", flush=True)
             
-            # 3. Attendre formulaire
-            print("3. ⏳ Attente formulaire...", flush=True)
-            page.wait_for_selector('textarea', timeout=20000)
+            # 3. Attendre que la page soit prête
+            print("3. ⏳ Attente page ready...", flush=True)
             time.sleep(2)
-            print("   ✅ Formulaire prêt", flush=True)
             
             # 4. Envoyer chaque message
             for i, message in enumerate(messages, 1):
-                print(f"📤 Message {i}/{len(messages)}", flush=True)
-
-                if i > 1:
-                    time.sleep(DELAY_BETWEEN_MESSAGES)
-
-                # 🔑 OBLIGATOIRE : rouvrir le formulaire Reply / Send
-                print("🔁 Ouverture formulaire Send/Reply...", flush=True)
-
-                open_button = page.locator(
-                    'button:has-text("Send"), button:has-text("Reply")'
-                    ).first
-
-                open_button.wait_for(state="visible", timeout=15000)
-                open_button.click()
-
-                # Attendre que le textarea APPARAISSE réellement
-                textarea = page.locator("textarea").first
-                textarea.wait_for(state="visible", timeout=20000)
-
-                # Remplissage
-                textarea.fill("")
-                time.sleep(0.5)
-                textarea.fill(message)
-
-                # Bouton Send interne au formulaire
-                send_button = page.locator(
-                    'button:has-text("Send"), input[type="submit"]'
-                    ).last
-
-                send_button.wait_for(state="visible", timeout=15000)
-                send_button.click()
-
-                # Attendre fermeture du formulaire
-                page.wait_for_selector("textarea", state="detached", timeout=20000)
-
-                print(f"✅ Message {i} envoyé", flush=True)
+                print(f"\n📤 Message {i}/{len(messages)}", flush=True)
+                
+                try:
+                    if i > 1:
+                        time.sleep(DELAY_BETWEEN_MESSAGES)
+                    
+                    # ═══════════════════════════════════════════════════
+                    # ÉTAPE A: RECHERCHE DYNAMIQUE du bouton "Send Reply"
+                    # ═══════════════════════════════════════════════════
+                    print("🔍 Recherche bouton 'Send Reply'...", flush=True)
+                    
+                    # Chercher spécifiquement "Send Reply" (texte exact)
+                    send_reply_btn = page.locator('button:has-text("Send Reply")')
+                    
+                    if send_reply_btn.count() > 0:
+                        # CAS 1: Bouton "Send Reply" existe
+                        print("   ✅ Bouton 'Send Reply' trouvé → clic", flush=True)
+                        send_reply_btn.first.click()
+                        time.sleep(1)  # Attendre ouverture formulaire
+                    else:
+                        # CAS 2: Pas de "Send Reply" 
+                        print("   ⏭️  Pas de 'Send Reply' → formulaire déjà ouvert", flush=True)
+                    
+                    # ═══════════════════════════════════════════════════
+                    # ÉTAPE B: REMPLIR le textarea
+                    # ═══════════════════════════════════════════════════
+                    print("📝 Remplissage message...", flush=True)
+                    
+                    # Attendre que textarea soit visible
+                    textarea = page.locator("textarea").first
+                    textarea.wait_for(state="visible", timeout=20000)
+                    
+                    # Remplir le message
+                    textarea.fill("")
+                    time.sleep(0.5)
+                    textarea.fill(message)
+                    time.sleep(0.5)
+                    
+                    # ═══════════════════════════════════════════════════
+                    # ÉTAPE C: CLIQUER sur bouton "Send" final
+                    # ═══════════════════════════════════════════════════
+                    print("🚀 Clic bouton Send...", flush=True)
+                    
+                    # Bouton "Send" dans le formulaire (dernier bouton Send trouvé)
+                    send_button = page.locator('button:has-text("Send")').last
+                    send_button.wait_for(state="visible", timeout=15000)
+                    send_button.click()
+                    
+                    # Attendre fermeture du formulaire
+                    page.wait_for_selector("textarea", state="detached", timeout=20000)
+                    time.sleep(1)
+                    
+                    print(f"   ✅ Message {i} envoyé", flush=True)
+                    
+                    # ═══════════════════════════════════════════════════
+                    # ÉTAPE D: VÉRIFIER bouton "Dismiss" après envoi
+                    # ═══════════════════════════════════════════════════
+                    print("🔔 Recherche notification 'Dismiss'...", flush=True)
+                    
+                    # Attendre un peu que la notification apparaisse
+                    time.sleep(1.5)
+                    
+                    # Chercher bouton Dismiss (texte exact ou aria-label)
+                    dismiss_btn = page.locator('button:has-text("Dismiss"), button[aria-label*="Dismiss"]')
+                    
+                    if dismiss_btn.count() > 0:
+                        print("   ✅ Notification trouvée → clic Dismiss", flush=True)
+                        dismiss_btn.first.click()
+                        time.sleep(0.5)
+                    else:
+                        print("   ⏭️  Pas de notification Dismiss", flush=True)
+                    
+                except Exception as e:
+                    print(f"   ❌ Erreur message {i}: {e}", flush=True)
+                    import traceback
+                    traceback.print_exc()
+                    continue
             
             print(f"\n✅ Playwright terminé - {len(messages)} messages traités", flush=True)
             browser.close()
             return True
             
         except Exception as e:
-            print(f"❌ Erreur Playwright: {e}", flush=True)
+            print(f"❌ Erreur Playwright globale: {e}", flush=True)
             import traceback
             traceback.print_exc()
             if 'browser' in locals():
