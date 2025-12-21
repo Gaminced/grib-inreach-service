@@ -1,5 +1,5 @@
-# inreach_sender.py - v3.1.1
-"""Module envoi inReach - Gestion dynamique bouton Send Reply à chaque message"""
+# inreach_sender.py - v3.1.3
+"""Module envoi inReach - Recherche dynamique tous boutons Send*"""
 
 import time
 import requests
@@ -13,9 +13,10 @@ from config import (GARMIN_USERNAME, GARMIN_PASSWORD, SENDGRID_API_KEY,
 def send_via_playwright_inreachlink(url, messages):
     """
     Envoie via Playwright pour URLs inreachlink.com
-    GESTION DYNAMIQUE:
-    - Pour chaque message: détecte "Send Reply" si présent → clic avant remplissage
-    - Sinon entre directement le message dans le textarea
+    RECHERCHE DYNAMIQUE:
+    - Détecte TOUS les boutons commençant par "Send" (Reply, Message, etc)
+    - Clic sur le premier trouvé pour ouvrir le formulaire
+    - Remplissage et envoi
     """
     print(f"🎭 PLAYWRIGHT inReachLink: {len(messages)} messages", flush=True)
     print(f"   URL: {url}", flush=True)
@@ -74,58 +75,92 @@ def send_via_playwright_inreachlink(url, messages):
                     if i > 1:
                         print(f"⏳ Délai {DELAY_BETWEEN_MESSAGES}s entre messages...", flush=True)
                         time.sleep(DELAY_BETWEEN_MESSAGES)
+                        
+                        # ATTENTE SUPPLÉMENTAIRE après envoi précédent
+                        print("⏳ Attente stabilisation page...", flush=True)
+                        page.wait_for_load_state('networkidle', timeout=15000)
+                        time.sleep(3)
                     
                     # ═══════════════════════════════════════════════════
-                    # ÉTAPE A: RECHERCHE DYNAMIQUE du bouton "Send Reply"
-                    # Cette recherche se fait POUR CHAQUE MESSAGE
-                    # Après un envoi, la page peut revenir à l'état initial
-                    # donc il faut rechercher à nouveau "Send Reply"
+                    # ÉTAPE A: RECHERCHE DYNAMIQUE de TOUS boutons Send*
+                    # Détecte: "Send Reply", "Send Message", etc.
                     # ═══════════════════════════════════════════════════
-                    print("🔍 Recherche bouton 'Send Reply'...", flush=True)
+                    print("🔍 Recherche boutons 'Send*'...", flush=True)
+                    time.sleep(2)
                     
-                    # Attendre un peu que la page se stabilise
-                    time.sleep(1)
+                    # Chercher TOUS les boutons contenant "Send" au début du texte
+                    # Patterns possibles: "Send Reply", "Send Message", "Send", etc.
+                    send_buttons = page.locator('button').filter(has_text="Send")
                     
-                    # Chercher spécifiquement "Send Reply" (texte exact)
-                    send_reply_btn = page.locator('button:has-text("Send Reply")')
+                    # Compter combien de boutons "Send*" sont présents
+                    send_count = send_buttons.count()
+                    print(f"   🔢 {send_count} bouton(s) 'Send*' trouvé(s)", flush=True)
                     
-                    if send_reply_btn.count() > 0:
-                        # CAS 1: Bouton "Send Reply" existe
-                        print("   ✅ Bouton 'Send Reply' trouvé → clic", flush=True)
-                        send_reply_btn.first.click()
-                        time.sleep(1)  # Attendre ouverture formulaire
+                    # Lister tous les boutons trouvés pour debug
+                    if send_count > 0:
+                        for idx in range(send_count):
+                            btn_text = send_buttons.nth(idx).text_content()
+                            print(f"      - Bouton {idx+1}: '{btn_text}'", flush=True)
+                    
+                    # Chercher spécifiquement les boutons d'ouverture de formulaire
+                    # (pas le bouton final "Send" dans le formulaire)
+                    open_form_btn = None
+                    
+                    # Essayer "Send Reply" en priorité
+                    send_reply = page.locator('button:has-text("Send Reply")')
+                    if send_reply.count() > 0:
+                        open_form_btn = send_reply.first
+                        print("   ✅ Bouton 'Send Reply' trouvé", flush=True)
                     else:
-                        # CAS 2: Pas de "Send Reply" 
-                        print("   ⏭️  Pas de 'Send Reply' → formulaire déjà ouvert", flush=True)
+                        # Essayer "Send Message"
+                        send_msg = page.locator('button:has-text("Send Message")')
+                        if send_msg.count() > 0:
+                            open_form_btn = send_msg.first
+                            print("   ✅ Bouton 'Send Message' trouvé", flush=True)
+                    
+                    # Si bouton d'ouverture trouvé, cliquer
+                    if open_form_btn:
+                        print("   🖱️  Clic pour ouvrir formulaire...", flush=True)
+                        open_form_btn.wait_for(state="visible", timeout=10000)
+                        open_form_btn.click()
+                        time.sleep(2)
+                    else:
+                        print("   ⏭️  Pas de bouton ouverture → formulaire déjà ouvert", flush=True)
                     
                     # ═══════════════════════════════════════════════════
                     # ÉTAPE B: REMPLIR le textarea
                     # ═══════════════════════════════════════════════════
-                    print("📝 Remplissage message...", flush=True)
+                    print("📝 Attente textarea...", flush=True)
                     
                     # Attendre que textarea soit visible
                     textarea = page.locator("textarea").first
-                    textarea.wait_for(state="visible", timeout=20000)
+                    textarea.wait_for(state="visible", timeout=30000)
+                    time.sleep(1)
                     
-                    # Remplir le message
+                    print("📝 Remplissage message...", flush=True)
                     textarea.fill("")
                     time.sleep(0.5)
                     textarea.fill(message)
+                    time.sleep(1)
+                    
+                    # ═══════════════════════════════════════════════════
+                    # ÉTAPE C: CLIQUER sur bouton "Send" FINAL
+                    # (le dernier "Send" trouvé = celui dans le formulaire)
+                    # ═══════════════════════════════════════════════════
+                    print("🚀 Recherche bouton Send final...", flush=True)
+                    
+                    # Prendre le DERNIER bouton "Send" = celui du formulaire
+                    send_final = page.locator('button:has-text("Send")').last
+                    send_final.wait_for(state="visible", timeout=15000)
                     time.sleep(0.5)
                     
-                    # ═══════════════════════════════════════════════════
-                    # ÉTAPE C: CLIQUER sur bouton "Send" final
-                    # ═══════════════════════════════════════════════════
                     print("🚀 Clic bouton Send...", flush=True)
-                    
-                    # Bouton "Send" dans le formulaire (dernier bouton Send trouvé)
-                    send_button = page.locator('button:has-text("Send")').last
-                    send_button.wait_for(state="visible", timeout=15000)
-                    send_button.click()
+                    send_final.click()
                     
                     # Attendre fermeture du formulaire
+                    print("⏳ Attente fermeture formulaire...", flush=True)
                     page.wait_for_selector("textarea", state="detached", timeout=20000)
-                    time.sleep(1)
+                    time.sleep(2)
                     
                     print(f"   ✅ Message {i} envoyé", flush=True)
                     
