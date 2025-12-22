@@ -6,3 +6,4 @@ playwright==1.40.0
 sendgrid==6.11.0
 gunicorn==23.0.0
 schedule==1.2.0
+mistralai==1.0.0
