@@ -1,7 +1,8 @@
-# email_monitor.py - v3.1.0
+# email_monitor.py - v3.1.1
 """
 Surveillance Gmail pour requêtes GRIB et AI (Claude/Mistral)
 Architecture modulaire avec détection patterns flexibles
+CORRECTION: import send_to_inreach (pas send_messages_to_inreach)
 """
 
 import imaplib
@@ -12,6 +13,7 @@ from config import GARMIN_USERNAME, GARMIN_PASSWORD
 from grib_handler import process_grib_request
 from claude_handler import handle_claude_maritime_assistant, handle_claude_request
 from mistral_handler import handle_mistral_maritime_assistant, handle_mistral_request
+from inreach_sender import send_to_inreach  # CORRECTION ICI
 
 
 def check_gmail():
@@ -335,8 +337,6 @@ def detect_request_type(body):
 
 def process_claude_request_wrapper(req):
     """Traite une requête Claude et envoie les messages"""
-    from inreach_sender import send_messages_to_inreach
-    
     print(f"\n{'='*70}")
     print("🤖 TRAITEMENT CLAUDE")
     print(f"{'='*70}")
@@ -346,7 +346,6 @@ def process_claude_request_wrapper(req):
         print(f"Question: {req['question'][:100]}...")
         print(f"Max words: {req['max_words']}\n")
         
-        # Appeler le handler (fonction à choisir selon ton implementation)
         try:
             response = handle_claude_maritime_assistant(req['question'])
             
@@ -357,9 +356,9 @@ def process_claude_request_wrapper(req):
             for i, msg in enumerate(messages, 1):
                 print(f"   [{i}/{len(messages)}] {len(msg)} chars: '{msg[:50]}...'")
             
-            # Envoyer
+            # Envoyer avec send_to_inreach (pas send_messages_to_inreach)
             print(f"\n📤 Envoi de {len(messages)} message(s)...")
-            if send_messages_to_inreach(req['reply_url'], messages):
+            if send_to_inreach(req['reply_url'], messages):
                 print(f"✅✅✅ CLAUDE: {len(messages)} messages envoyés avec succès")
             else:
                 print(f"❌ Échec envoi messages Claude")
@@ -382,7 +381,7 @@ Envoyez question après ':'"""
         messages = [help_msg]
         
         print(f"📤 Envoi message d'aide...")
-        if send_messages_to_inreach(req['reply_url'], messages):
+        if send_to_inreach(req['reply_url'], messages):
             print(f"✅ Message d'aide Claude envoyé")
         else:
             print(f"❌ Échec envoi aide Claude")
@@ -390,8 +389,6 @@ Envoyez question après ':'"""
 
 def process_mistral_request_wrapper(req):
     """Traite une requête Mistral et envoie les messages"""
-    from inreach_sender import send_messages_to_inreach
-    
     print(f"\n{'='*70}")
     print("🧠 TRAITEMENT MISTRAL")
     print(f"{'='*70}")
@@ -413,7 +410,7 @@ def process_mistral_request_wrapper(req):
             
             # Envoyer
             print(f"\n📤 Envoi de {len(messages)} message(s)...")
-            if send_messages_to_inreach(req['reply_url'], messages):
+            if send_to_inreach(req['reply_url'], messages):
                 print(f"✅✅✅ MISTRAL: {len(messages)} messages envoyés avec succès")
             else:
                 print(f"❌ Échec envoi messages Mistral")
@@ -436,7 +433,7 @@ Envoyez question après ':'"""
         messages = [help_msg]
         
         print(f"📤 Envoi message d'aide...")
-        if send_messages_to_inreach(req['reply_url'], messages):
+        if send_to_inreach(req['reply_url'], messages):
             print(f"✅ Message d'aide Mistral envoyé")
         else:
             print(f"❌ Échec envoi aide Mistral")
@@ -478,7 +475,7 @@ def split_long_response(response, max_length=160):
 
 # Point d'entrée pour tests
 if __name__ == "__main__":
-    print("Test email_monitor.py v3.1.0")
+    print("Test email_monitor.py v3.1.1")
     print("="*70)
     
     # Test détection
