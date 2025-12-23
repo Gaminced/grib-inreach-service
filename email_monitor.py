@@ -1,8 +1,21 @@
-# email_monitor.py - v3.1.1
+# email_monitor.py - v3.2.0
 """
 Surveillance Gmail pour requêtes GRIB et AI (Claude/Mistral)
-Architecture modulaire avec détection patterns flexibles
-CORRECTION: import send_to_inreach (pas send_messages_to_inreach)
+Architecture modulaire avec patterns courts maritimes/génériques
+
+PATTERNS MARITIMES (assistant spécialisé navigation):
+- c 150: question       → Claude maritime
+- m 150: question       → Mistral maritime
+- w 150: question       → Weather expert (Mistral météo)
+- claude 150: question  → Claude maritime (compatibilité)
+- mistral 150: question → Mistral maritime (compatibilité)
+
+PATTERNS GÉNÉRIQUES (assistant standard):
+- cg 150: question      → Claude générique
+- mg 150: question      → Mistral générique
+
+GRIB:
+- ecmwf:...             → Fichiers GRIB météo
 """
 
 import imaplib
@@ -12,14 +25,14 @@ from datetime import datetime
 from config import GARMIN_USERNAME, GARMIN_PASSWORD
 from grib_handler import process_grib_request
 from claude_handler import handle_claude_maritime_assistant, handle_claude_request
-from mistral_handler import handle_mistral_maritime_assistant, handle_mistral_request
-from inreach_sender import send_to_inreach  # CORRECTION ICI
+from mistral_handler import handle_mistral_maritime_assistant, handle_mistral_request, handle_mistral_weather_expert
+from inreach_sender import send_to_inreach
 
 
 def check_gmail():
     """
     Vérifie Gmail pour nouvelles requêtes inReach
-    Détecte et route: GRIB, Claude, Mistral
+    Détecte et route: GRIB, Claude (maritime/générique), Mistral (maritime/générique/météo)
     """
     print("\n" + "="*70)
     print(f"🔄 VÉRIFICATION EMAIL - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -101,9 +114,9 @@ def check_gmail():
                         requests_found.append(request_info)
                         
                         print(f"✅ Requête détectée: {request_info['type'].upper()}")
-                        if request_info['type'] in ['claude', 'mistral']:
-                            print(f"   Provider: {request_info['provider']}")
-                            print(f"   Max words: {request_info['max_words']}")
+                        if 'mode' in request_info:
+                            print(f"   Mode: {request_info['mode']}")
+                        if 'question' in request_info:
                             print(f"   Question: {request_info['question'][:100]}...")
                     else:
                         print("❓ Aucune requête reconnue dans cet email")
@@ -123,11 +136,20 @@ def check_gmail():
             print(f"📋 Requête {idx}/{len(requests_found)}")
             print(f"{'='*70}")
             
-            if req['type'] == 'claude':
-                process_claude_request_wrapper(req)
+            if req['type'] == 'claude_maritime':
+                process_claude_maritime_wrapper(req)
             
-            elif req['type'] == 'mistral':
-                process_mistral_request_wrapper(req)
+            elif req['type'] == 'claude_generic':
+                process_claude_generic_wrapper(req)
+            
+            elif req['type'] == 'mistral_maritime':
+                process_mistral_maritime_wrapper(req)
+            
+            elif req['type'] == 'mistral_generic':
+                process_mistral_generic_wrapper(req)
+            
+            elif req['type'] == 'weather':
+                process_weather_wrapper(req)
             
             elif req['type'] == 'grib':
                 process_grib_request(req['request'], req['reply_url'], mail)
@@ -194,7 +216,21 @@ def extract_reply_url(body):
 
 def detect_request_type(body):
     """
-    Détecte le type de requête: GRIB, Claude, Mistral
+    Détecte le type de requête avec patterns courts
+    
+    MARITIMES:
+    - c 150: question       → Claude maritime
+    - m 150: question       → Mistral maritime
+    - w 150: question       → Weather expert
+    - claude 150: question  → Claude maritime
+    - mistral 150: question → Mistral maritime
+    
+    GÉNÉRIQUES:
+    - cg 150: question      → Claude générique
+    - mg 150: question      → Mistral générique
+    
+    GRIB:
+    - ecmwf:...
     
     Returns:
         dict avec type et paramètres, ou None
@@ -203,120 +239,197 @@ def detect_request_type(body):
     print("🔍 DÉTECTION TYPE DE REQUÊTE")
     print(f"{'='*70}")
     
-    # PATTERN 1: Claude avec question "claude 150: question"
-    claude_with_q = re.compile(
-        r'(claude|gpt)\s+(\d+)\s*:\s*(.+)',
+    # ========================================
+    # PATTERNS GÉNÉRIQUES (priorité haute)
+    # ========================================
+    
+    # PATTERN 1: Claude générique "cg 150: question"
+    cg_pattern = re.compile(
+        r'\bcg\s+(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
-    match = claude_with_q.search(body)
+    match = cg_pattern.search(body)
     if match:
-        max_words = int(match.group(2))
-        question = match.group(3).strip()
-        question = ' '.join(question.split())
-        
-        print("✅ CLAUDE AVEC QUESTION détecté")
-        print(f"   Max words: {max_words}")
-        print(f"   Question: {question[:100]}...")
-        
-        return {
-            'type': 'claude',
-            'provider': 'claude',
-            'max_words': max_words,
-            'question': question
-        }
-    
-    # PATTERN 2: Claude sans question "claude 150"
-    claude_without_q = re.compile(
-        r'(claude|gpt)\s+(\d+)\s*$',
-        re.IGNORECASE | re.MULTILINE
-    )
-    match = claude_without_q.search(body)
-    if match:
-        max_words = int(match.group(2))
-        
-        print("✅ CLAUDE SANS QUESTION détecté (message d'aide)")
-        print(f"   Max words: {max_words}")
-        
-        return {
-            'type': 'claude',
-            'provider': 'claude',
-            'max_words': max_words,
-            'question': ""  # Vide = message d'aide
-        }
-    
-    # PATTERN 3: Juste "claude" ou "gpt"
-    claude_only = re.compile(r'^(claude|gpt)\s*$', re.IGNORECASE | re.MULTILINE)
-    match = claude_only.search(body)
-    if match:
-        print("✅ CLAUDE SEUL détecté (message d'aide, 50 mots par défaut)")
-        
-        return {
-            'type': 'claude',
-            'provider': 'claude',
-            'max_words': 50,
-            'question': ""
-        }
-    
-    # PATTERN 4: Mistral avec question "mistral 150: question"
-    mistral_with_q = re.compile(
-        r'mistral\s+(\d+)\s*:\s*(.+)',
-        re.IGNORECASE | re.DOTALL
-    )
-    match = mistral_with_q.search(body)
-    if match:
-        max_words = int(match.group(1))
+        max_tokens = int(match.group(1)) * 3
         question = match.group(2).strip()
         question = ' '.join(question.split())
         
-        print("✅ MISTRAL AVEC QUESTION détecté")
-        print(f"   Max words: {max_words}")
+        print("✅ CLAUDE GÉNÉRIQUE détecté (cg)")
+        print(f"   Max tokens: {max_tokens}")
         print(f"   Question: {question[:100]}...")
         
         return {
-            'type': 'mistral',
-            'provider': 'mistral',
-            'max_words': max_words,
+            'type': 'claude_generic',
+            'mode': 'generic',
+            'max_tokens': max_tokens,
             'question': question
         }
     
-    # PATTERN 5: Mistral sans question "mistral 150"
-    mistral_without_q = re.compile(
-        r'mistral\s+(\d+)\s*$',
-        re.IGNORECASE | re.MULTILINE
+    # PATTERN 2: Mistral générique "mg 150: question"
+    mg_pattern = re.compile(
+        r'\bmg\s+(\d+)\s*:\s*(.+)',
+        re.IGNORECASE | re.DOTALL
     )
-    match = mistral_without_q.search(body)
+    match = mg_pattern.search(body)
     if match:
-        max_words = int(match.group(1))
+        max_tokens = int(match.group(1)) * 3
+        question = match.group(2).strip()
+        question = ' '.join(question.split())
         
-        print("✅ MISTRAL SANS QUESTION détecté (message d'aide)")
-        print(f"   Max words: {max_words}")
+        print("✅ MISTRAL GÉNÉRIQUE détecté (mg)")
+        print(f"   Max tokens: {max_tokens}")
+        print(f"   Question: {question[:100]}...")
         
         return {
-            'type': 'mistral',
-            'provider': 'mistral',
-            'max_words': max_words,
-            'question': ""
+            'type': 'mistral_generic',
+            'mode': 'generic',
+            'max_tokens': max_tokens,
+            'question': question
         }
     
-    # PATTERN 6: Juste "mistral"
-    mistral_only = re.compile(r'^mistral\s*$', re.IGNORECASE | re.MULTILINE)
-    match = mistral_only.search(body)
+    # ========================================
+    # PATTERNS MARITIMES
+    # ========================================
+    
+    # PATTERN 3: Claude maritime court "c 150: question"
+    c_pattern = re.compile(
+        r'\bc\s+(\d+)\s*:\s*(.+)',
+        re.IGNORECASE | re.DOTALL
+    )
+    match = c_pattern.search(body)
     if match:
-        print("✅ MISTRAL SEUL détecté (message d'aide, 50 mots par défaut)")
+        max_tokens = int(match.group(1)) * 3
+        question = match.group(2).strip()
+        question = ' '.join(question.split())
+        
+        print("✅ CLAUDE MARITIME détecté (c)")
+        print(f"   Max tokens: {max_tokens}")
+        print(f"   Question: {question[:100]}...")
         
         return {
-            'type': 'mistral',
-            'provider': 'mistral',
-            'max_words': 50,
-            'question': ""
+            'type': 'claude_maritime',
+            'mode': 'maritime',
+            'max_tokens': max_tokens,
+            'question': question
         }
     
-    # PATTERN 7: GRIB "ecmwf:..." ou "gfs:..." ou "icon:..."
+    # PATTERN 4: Mistral maritime court "m 150: question"
+    m_pattern = re.compile(
+        r'\bm\s+(\d+)\s*:\s*(.+)',
+        re.IGNORECASE | re.DOTALL
+    )
+    match = m_pattern.search(body)
+    if match:
+        max_tokens = int(match.group(1)) * 3
+        question = match.group(2).strip()
+        question = ' '.join(question.split())
+        
+        print("✅ MISTRAL MARITIME détecté (m)")
+        print(f"   Max tokens: {max_tokens}")
+        print(f"   Question: {question[:100]}...")
+        
+        return {
+            'type': 'mistral_maritime',
+            'mode': 'maritime',
+            'max_tokens': max_tokens,
+            'question': question
+        }
+    
+    # PATTERN 5: Weather expert "w 150: question"
+    w_pattern = re.compile(
+        r'\bw\s+(\d+)\s*:\s*(.+)',
+        re.IGNORECASE | re.DOTALL
+    )
+    match = w_pattern.search(body)
+    if match:
+        max_tokens = int(match.group(1)) * 3
+        question = match.group(2).strip()
+        question = ' '.join(question.split())
+        
+        print("✅ WEATHER EXPERT détecté (w)")
+        print(f"   Max tokens: {max_tokens}")
+        print(f"   Question: {question[:100]}...")
+        
+        return {
+            'type': 'weather',
+            'mode': 'weather',
+            'max_tokens': max_tokens,
+            'question': question
+        }
+    
+    # PATTERN 6: Claude maritime long "claude 150: question" (compatibilité)
+    claude_long = re.compile(
+        r'\b(claude|gpt)\s+(\d+)\s*:\s*(.+)',
+        re.IGNORECASE | re.DOTALL
+    )
+    match = claude_long.search(body)
+    if match:
+        max_tokens = int(match.group(2)) * 3
+        question = match.group(3).strip()
+        question = ' '.join(question.split())
+        
+        print("✅ CLAUDE MARITIME détecté (claude)")
+        print(f"   Max tokens: {max_tokens}")
+        print(f"   Question: {question[:100]}...")
+        
+        return {
+            'type': 'claude_maritime',
+            'mode': 'maritime',
+            'max_tokens': max_tokens,
+            'question': question
+        }
+    
+    # PATTERN 7: Mistral maritime long "mistral 150: question" (compatibilité)
+    mistral_long = re.compile(
+        r'\bmistral\s+(\d+)\s*:\s*(.+)',
+        re.IGNORECASE | re.DOTALL
+    )
+    match = mistral_long.search(body)
+    if match:
+        max_tokens = int(match.group(1)) * 3
+        question = match.group(2).strip()
+        question = ' '.join(question.split())
+        
+        print("✅ MISTRAL MARITIME détecté (mistral)")
+        print(f"   Max tokens: {max_tokens}")
+        print(f"   Question: {question[:100]}...")
+        
+        return {
+            'type': 'mistral_maritime',
+            'mode': 'maritime',
+            'max_tokens': max_tokens,
+            'question': question
+        }
+    
+    # ========================================
+    # PATTERNS SANS QUESTION (messages d'aide)
+    # ========================================
+    
+    # Sans question = message d'aide
+    for pattern, ai_type in [
+        (r'\bc\s+(\d+)\s*$', 'claude_maritime'),
+        (r'\bm\s+(\d+)\s*$', 'mistral_maritime'),
+        (r'\bcg\s+(\d+)\s*$', 'claude_generic'),
+        (r'\bmg\s+(\d+)\s*$', 'mistral_generic'),
+        (r'\bw\s+(\d+)\s*$', 'weather'),
+    ]:
+        match = re.search(pattern, body, re.IGNORECASE | re.MULTILINE)
+        if match:
+            print(f"✅ {ai_type.upper()} SANS QUESTION (message d'aide)")
+            return {
+                'type': ai_type,
+                'mode': 'help',
+                'question': ""
+            }
+    
+    # ========================================
+    # PATTERN GRIB
+    # ========================================
+    
     grib_pattern = re.compile(r'(ecmwf|gfs|icon):[^\s\n]+', re.IGNORECASE)
     match = grib_pattern.search(body)
     
     if not match:
-        # Essayer sur une seule ligne
         body_single = body.replace('\n', ' ').replace('\r', ' ')
         match = grib_pattern.search(body_single)
     
@@ -335,121 +448,149 @@ def detect_request_type(body):
     return None
 
 
-def process_claude_request_wrapper(req):
-    """Traite une requête Claude et envoie les messages"""
+def process_claude_maritime_wrapper(req):
+    """Traite requête Claude MARITIME"""
     print(f"\n{'='*70}")
-    print("🤖 TRAITEMENT CLAUDE")
+    print("⚓ CLAUDE MARITIME")
     print(f"{'='*70}")
     
-    if req['question'] and req['question'].strip():
-        # Requête avec question
+    if req['question']:
         print(f"Question: {req['question'][:100]}...")
-        print(f"Max words: {req['max_words']}\n")
         
         try:
             response = handle_claude_maritime_assistant(req['question'])
-            
-            # Découper la réponse en messages inReach (max 160 chars)
             messages = split_long_response(response, max_length=160)
             
-            print(f"✅ Réponse Claude: {len(messages)} message(s)")
-            for i, msg in enumerate(messages, 1):
-                print(f"   [{i}/{len(messages)}] {len(msg)} chars: '{msg[:50]}...'")
-            
-            # Envoyer avec send_to_inreach (pas send_messages_to_inreach)
-            print(f"\n📤 Envoi de {len(messages)} message(s)...")
+            print(f"✅ {len(messages)} message(s)")
+            print(f"\n📤 Envoi...")
             if send_to_inreach(req['reply_url'], messages):
-                print(f"✅✅✅ CLAUDE: {len(messages)} messages envoyés avec succès")
+                print(f"✅✅✅ SUCCÈS")
             else:
-                print(f"❌ Échec envoi messages Claude")
-        
+                print(f"❌ ÉCHEC")
         except Exception as e:
-            print(f"❌ Erreur traitement Claude: {e}")
+            print(f"❌ Erreur: {e}")
             import traceback
             traceback.print_exc()
-    
     else:
-        # Requête sans question = message d'aide
-        print("📖 Envoi message d'aide Claude\n")
-        
-        help_msg = """Claude AI prêt!
-Formats:
-- claude 150: votre question
-- claude 100: weather forecast
-Envoyez question après ':'"""
-        
-        messages = [help_msg]
-        
-        print(f"📤 Envoi message d'aide...")
-        if send_to_inreach(req['reply_url'], messages):
-            print(f"✅ Message d'aide Claude envoyé")
-        else:
-            print(f"❌ Échec envoi aide Claude")
+        send_help_message(req['reply_url'], "Claude maritime: c 150: question")
 
 
-def process_mistral_request_wrapper(req):
-    """Traite une requête Mistral et envoie les messages"""
+def process_claude_generic_wrapper(req):
+    """Traite requête Claude GÉNÉRIQUE"""
     print(f"\n{'='*70}")
-    print("🧠 TRAITEMENT MISTRAL")
+    print("🤖 CLAUDE GÉNÉRIQUE")
     print(f"{'='*70}")
     
-    if req['question'] and req['question'].strip():
-        # Requête avec question
+    if req['question']:
         print(f"Question: {req['question'][:100]}...")
-        print(f"Max words: {req['max_words']}\n")
+        
+        try:
+            response = handle_claude_request(req['question'], req['max_tokens'])
+            messages = split_long_response(response, max_length=160)
+            
+            print(f"✅ {len(messages)} message(s)")
+            print(f"\n📤 Envoi...")
+            if send_to_inreach(req['reply_url'], messages):
+                print(f"✅✅✅ SUCCÈS")
+            else:
+                print(f"❌ ÉCHEC")
+        except Exception as e:
+            print(f"❌ Erreur: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        send_help_message(req['reply_url'], "Claude générique: cg 150: question")
+
+
+def process_mistral_maritime_wrapper(req):
+    """Traite requête Mistral MARITIME"""
+    print(f"\n{'='*70}")
+    print("⚓ MISTRAL MARITIME")
+    print(f"{'='*70}")
+    
+    if req['question']:
+        print(f"Question: {req['question'][:100]}...")
         
         try:
             response = handle_mistral_maritime_assistant(req['question'])
-            
-            # Découper la réponse
             messages = split_long_response(response, max_length=160)
             
-            print(f"✅ Réponse Mistral: {len(messages)} message(s)")
-            for i, msg in enumerate(messages, 1):
-                print(f"   [{i}/{len(messages)}] {len(msg)} chars: '{msg[:50]}...'")
-            
-            # Envoyer
-            print(f"\n📤 Envoi de {len(messages)} message(s)...")
+            print(f"✅ {len(messages)} message(s)")
+            print(f"\n📤 Envoi...")
             if send_to_inreach(req['reply_url'], messages):
-                print(f"✅✅✅ MISTRAL: {len(messages)} messages envoyés avec succès")
+                print(f"✅✅✅ SUCCÈS")
             else:
-                print(f"❌ Échec envoi messages Mistral")
-        
+                print(f"❌ ÉCHEC")
         except Exception as e:
-            print(f"❌ Erreur traitement Mistral: {e}")
+            print(f"❌ Erreur: {e}")
             import traceback
             traceback.print_exc()
-    
     else:
-        # Requête sans question = message d'aide
-        print("📖 Envoi message d'aide Mistral\n")
+        send_help_message(req['reply_url'], "Mistral maritime: m 150: question")
+
+
+def process_mistral_generic_wrapper(req):
+    """Traite requête Mistral GÉNÉRIQUE"""
+    print(f"\n{'='*70}")
+    print("🧠 MISTRAL GÉNÉRIQUE")
+    print(f"{'='*70}")
+    
+    if req['question']:
+        print(f"Question: {req['question'][:100]}...")
         
-        help_msg = """Mistral AI prêt!
-Formats:
-- mistral 150: votre question
-- mistral 100: météo demain
-Envoyez question après ':'"""
+        try:
+            response = handle_mistral_request(req['question'], req['max_tokens'])
+            messages = split_long_response(response, max_length=160)
+            
+            print(f"✅ {len(messages)} message(s)")
+            print(f"\n📤 Envoi...")
+            if send_to_inreach(req['reply_url'], messages):
+                print(f"✅✅✅ SUCCÈS")
+            else:
+                print(f"❌ ÉCHEC")
+        except Exception as e:
+            print(f"❌ Erreur: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        send_help_message(req['reply_url'], "Mistral générique: mg 150: question")
+
+
+def process_weather_wrapper(req):
+    """Traite requête WEATHER EXPERT"""
+    print(f"\n{'='*70}")
+    print("🌊 WEATHER EXPERT")
+    print(f"{'='*70}")
+    
+    if req['question']:
+        print(f"Question: {req['question'][:100]}...")
         
-        messages = [help_msg]
-        
-        print(f"📤 Envoi message d'aide...")
-        if send_to_inreach(req['reply_url'], messages):
-            print(f"✅ Message d'aide Mistral envoyé")
-        else:
-            print(f"❌ Échec envoi aide Mistral")
+        try:
+            response = handle_mistral_weather_expert(req['question'])
+            messages = split_long_response(response, max_length=160)
+            
+            print(f"✅ {len(messages)} message(s)")
+            print(f"\n📤 Envoi...")
+            if send_to_inreach(req['reply_url'], messages):
+                print(f"✅✅✅ SUCCÈS")
+            else:
+                print(f"❌ ÉCHEC")
+        except Exception as e:
+            print(f"❌ Erreur: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        send_help_message(req['reply_url'], "Weather expert: w 150: question")
+
+
+def send_help_message(url, example):
+    """Envoie message d'aide"""
+    help_msg = f"Format: {example}"
+    send_to_inreach(url, [help_msg])
 
 
 def split_long_response(response, max_length=160):
-    """
-    Découpe une réponse longue en messages inReach
-    
-    Args:
-        response: Texte à découper
-        max_length: Taille max par message (défaut 160)
-        
-    Returns:
-        Liste de messages
-    """
+    """Découpe réponse en messages"""
     if len(response) <= max_length:
         return [response]
     
@@ -471,26 +612,3 @@ def split_long_response(response, max_length=160):
         messages.append(current_msg)
     
     return messages
-
-
-# Point d'entrée pour tests
-if __name__ == "__main__":
-    print("Test email_monitor.py v3.1.1")
-    print("="*70)
-    
-    # Test détection
-    test_bodies = [
-        "claude 150: que faire si vent 40kt?",
-        "Claude 150",
-        "mistral 100: distance Panama Marquises",
-        "mistral 50",
-        "ecmwf:0S,92W+150",
-    ]
-    
-    for body in test_bodies:
-        print(f"\nTest: '{body}'")
-        result = detect_request_type(body)
-        if result:
-            print(f"✅ Détecté: {result}")
-        else:
-            print("❌ Non détecté")
