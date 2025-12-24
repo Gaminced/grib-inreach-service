@@ -1,7 +1,7 @@
-# email_monitor.py - v3.2.0
+# email_monitor.py - v3.2.1
 """
 Surveillance Gmail pour requêtes GRIB et AI (Claude/Mistral)
-Architecture modulaire avec patterns courts maritimes/génériques
+v3.2.1: FIX socket error EOF - Fermeture IMAP avant envoi messages
 
 PATTERNS MARITIMES (assistant spécialisé navigation):
 - c 150: question       → Claude maritime
@@ -33,13 +33,21 @@ def check_gmail():
     """
     Vérifie Gmail pour nouvelles requêtes inReach
     Détecte et route: GRIB, Claude (maritime/générique), Mistral (maritime/générique/météo)
+    
+    v3.2.1: Fermeture IMAP AVANT traitement pour éviter socket error EOF
     """
     print("\n" + "="*70)
     print(f"🔄 VÉRIFICATION EMAIL - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*70 + "\n")
     
+    mail = None
+    requests_found = []
+    
     try:
-        # Connexion IMAP
+        # ========================================
+        # PHASE 1: LECTURE EMAILS (connexion IMAP)
+        # ========================================
+        
         print(f"📧 Connexion IMAP: {GARMIN_USERNAME}")
         mail = imaplib.IMAP4_SSL('imap.gmail.com', 993)
         mail.login(GARMIN_USERNAME, GARMIN_PASSWORD)
@@ -52,7 +60,8 @@ def check_gmail():
         
         if status != 'OK':
             print("⚠️  Erreur recherche emails")
-            mail.logout()
+            if mail:
+                mail.logout()
             return
         
         email_ids = messages[0].split()
@@ -64,8 +73,6 @@ def check_gmail():
             return
         
         # Traiter chaque email
-        requests_found = []
-        
         for email_id in email_ids:
             status, msg_data = mail.fetch(email_id, '(RFC822)')
             
@@ -121,13 +128,33 @@ def check_gmail():
                     else:
                         print("❓ Aucune requête reconnue dans cet email")
         
-        # TRAITER LES REQUÊTES
-        if not requests_found:
-            print("\n✓ Aucune requête à traiter")
-            mail.logout()
-            return
+        # ========================================
+        # PHASE 2: FERMETURE IMAP
+        # ========================================
+        # CRITIQUE: Fermer AVANT traitement pour éviter timeout
         
         print(f"\n{'='*70}")
+        print("📋 FIN LECTURE EMAILS - Fermeture IMAP")
+        print(f"{'='*70}\n")
+        
+        if mail:
+            try:
+                mail.logout()
+                print("✅ IMAP déconnecté proprement\n")
+                mail = None  # Important: marquer comme fermé
+            except Exception as e:
+                print(f"⚠️  Erreur logout IMAP (ignorée): {e}\n")
+                mail = None
+        
+        # ========================================
+        # PHASE 3: TRAITEMENT REQUÊTES (sans IMAP)
+        # ========================================
+        
+        if not requests_found:
+            print("✓ Aucune requête à traiter")
+            return
+        
+        print(f"{'='*70}")
         print(f"🎯 TRAITEMENT DE {len(requests_found)} REQUÊTE(S)")
         print(f"{'='*70}\n")
         
@@ -135,6 +162,9 @@ def check_gmail():
             print(f"\n{'='*70}")
             print(f"📋 Requête {idx}/{len(requests_found)}")
             print(f"{'='*70}")
+            
+            # Traitement selon type
+            # NOTE: Pour GRIB, on doit reconnecter IMAP temporairement
             
             if req['type'] == 'claude_maritime':
                 process_claude_maritime_wrapper(req)
@@ -152,17 +182,40 @@ def check_gmail():
                 process_weather_wrapper(req)
             
             elif req['type'] == 'grib':
-                process_grib_request(req['request'], req['reply_url'], mail)
+                # GRIB nécessite IMAP pour attendre réponse Saildocs
+                # On reconnecte temporairement
+                print("🔄 Reconnexion IMAP pour GRIB...")
+                try:
+                    grib_mail = imaplib.IMAP4_SSL('imap.gmail.com', 993)
+                    grib_mail.login(GARMIN_USERNAME, GARMIN_PASSWORD)
+                    grib_mail.select('inbox')
+                    
+                    process_grib_request(req['request'], req['reply_url'], grib_mail)
+                    
+                    grib_mail.logout()
+                    print("✅ IMAP GRIB déconnecté\n")
+                except Exception as e:
+                    print(f"❌ Erreur GRIB: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             print(f"{'='*70}\n")
         
-        mail.logout()
         print("\n✅ Vérification terminée\n")
         
     except Exception as e:
         print(f"❌ Erreur check_gmail: {e}")
         import traceback
         traceback.print_exc()
+    
+    finally:
+        # Sécurité: toujours fermer IMAP si encore ouvert
+        if mail:
+            try:
+                mail.logout()
+                print("✅ IMAP fermé (finally)")
+            except:
+                pass
 
 
 def extract_email_body(msg):
