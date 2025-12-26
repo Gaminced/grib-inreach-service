@@ -1,10 +1,10 @@
-# email_monitor.py - v3.2.2
+# email_monitor.py - v3.2.3
 """
 Surveillance Gmail pour requêtes GRIB et AI (Claude/Mistral)
-v3.2.2: 
-- FIX patterns tolérants (cg150 ou cg 150 ou CG 150)
-- Détection insensible à la casse
-- Tolérance espaces optionnels
+v3.2.3: 
+- Adaptation pour handlers v1.3 retournant (réponse, coût)
+- Patterns tolérants (cg150 ou cg 150 ou CG 150)
+- Découpage 120 chars avec coût/solde
 
 PATTERNS MARITIMES (assistant spécialisé navigation):
 - c 150: question       → Claude maritime
@@ -27,8 +27,8 @@ import re
 from datetime import datetime
 from config import GARMIN_USERNAME, GARMIN_PASSWORD
 from grib_handler import process_grib_request
-from claude_handler import handle_claude_maritime_assistant, handle_claude_request
-from mistral_handler import handle_mistral_maritime_assistant, handle_mistral_request, handle_mistral_weather_expert
+from claude_handler import handle_claude_maritime_assistant, handle_claude_request, split_long_response as claude_split
+from mistral_handler import handle_mistral_maritime_assistant, handle_mistral_request, handle_mistral_weather_expert, split_long_response as mistral_split
 from inreach_sender import send_to_inreach
 
 
@@ -37,7 +37,7 @@ def check_gmail():
     Vérifie Gmail pour nouvelles requêtes inReach
     Détecte et route: GRIB, Claude (maritime/générique), Mistral (maritime/générique/météo)
     
-    v3.2.2: Patterns tolérants (avec/sans espace, casse insensible)
+    v3.2.3: Gestion tuple (réponse, coût) des handlers v1.3
     """
     print("\n" + "="*70)
     print(f"🔄 VÉRIFICATION EMAIL - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -271,15 +271,6 @@ def detect_request_type(body):
     - Espaces optionnels: "cg150" ou "cg 150"
     - Casse insensible: "cg", "CG", "Cg"
     
-    PATTERNS:
-    - cg\s*150: question      → Claude générique
-    - mg\s*150: question      → Mistral générique
-    - c\s*150: question       → Claude maritime
-    - m\s*150: question       → Mistral maritime
-    - w\s*150: question       → Weather expert
-    - claude\s*150: question  → Claude maritime
-    - mistral\s*150: question → Mistral maritime
-    
     Returns:
         dict avec type et paramètres, ou None
     """
@@ -496,7 +487,7 @@ def detect_request_type(body):
 
 
 def process_claude_maritime_wrapper(req):
-    """Traite requête Claude MARITIME"""
+    """Traite requête Claude MARITIME - v1.3 avec coût"""
     print(f"\n{'='*70}")
     print("⚓ CLAUDE MARITIME")
     print(f"{'='*70}")
@@ -505,8 +496,9 @@ def process_claude_maritime_wrapper(req):
         print(f"Question: {req['question'][:100]}...")
         
         try:
-            response = handle_claude_maritime_assistant(req['question'])
-            messages = split_long_response(response, max_length=120)
+            # Handler retourne (réponse, coût)
+            response, cost = handle_claude_maritime_assistant(req['question'])
+            messages = claude_split(response, cost, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -523,7 +515,7 @@ def process_claude_maritime_wrapper(req):
 
 
 def process_claude_generic_wrapper(req):
-    """Traite requête Claude GÉNÉRIQUE"""
+    """Traite requête Claude GÉNÉRIQUE - v1.3 avec coût"""
     print(f"\n{'='*70}")
     print("🤖 CLAUDE GÉNÉRIQUE")
     print(f"{'='*70}")
@@ -532,8 +524,9 @@ def process_claude_generic_wrapper(req):
         print(f"Question: {req['question'][:100]}...")
         
         try:
-            response = handle_claude_request(req['question'], req['max_tokens'])
-            messages = split_long_response(response, max_length=120)
+            # Handler retourne (réponse, coût)
+            response, cost = handle_claude_request(req['question'], req['max_tokens'])
+            messages = claude_split(response, cost, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -550,7 +543,7 @@ def process_claude_generic_wrapper(req):
 
 
 def process_mistral_maritime_wrapper(req):
-    """Traite requête Mistral MARITIME"""
+    """Traite requête Mistral MARITIME - v1.3 avec coût"""
     print(f"\n{'='*70}")
     print("⚓ MISTRAL MARITIME")
     print(f"{'='*70}")
@@ -559,8 +552,9 @@ def process_mistral_maritime_wrapper(req):
         print(f"Question: {req['question'][:100]}...")
         
         try:
-            response = handle_mistral_maritime_assistant(req['question'])
-            messages = split_long_response(response, max_length=120)
+            # Handler retourne (réponse, coût)
+            response, cost = handle_mistral_maritime_assistant(req['question'])
+            messages = mistral_split(response, cost, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -577,7 +571,7 @@ def process_mistral_maritime_wrapper(req):
 
 
 def process_mistral_generic_wrapper(req):
-    """Traite requête Mistral GÉNÉRIQUE"""
+    """Traite requête Mistral GÉNÉRIQUE - v1.3 avec coût"""
     print(f"\n{'='*70}")
     print("🧠 MISTRAL GÉNÉRIQUE")
     print(f"{'='*70}")
@@ -586,8 +580,9 @@ def process_mistral_generic_wrapper(req):
         print(f"Question: {req['question'][:100]}...")
         
         try:
-            response = handle_mistral_request(req['question'], req['max_tokens'])
-            messages = split_long_response(response, max_length=120)
+            # Handler retourne (réponse, coût)
+            response, cost = handle_mistral_request(req['question'], req['max_tokens'])
+            messages = mistral_split(response, cost, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -604,7 +599,7 @@ def process_mistral_generic_wrapper(req):
 
 
 def process_weather_wrapper(req):
-    """Traite requête WEATHER EXPERT"""
+    """Traite requête WEATHER EXPERT - v1.3 avec coût"""
     print(f"\n{'='*70}")
     print("🌊 WEATHER EXPERT")
     print(f"{'='*70}")
@@ -613,8 +608,9 @@ def process_weather_wrapper(req):
         print(f"Question: {req['question'][:100]}...")
         
         try:
-            response = handle_mistral_weather_expert(req['question'])
-            messages = split_long_response(response, max_length=120)
+            # Handler retourne (réponse, coût)
+            response, cost = handle_mistral_weather_expert(req['question'])
+            messages = mistral_split(response, cost, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -634,16 +630,3 @@ def send_help_message(url, example):
     """Envoie message d'aide"""
     help_msg = f"Format: {example}"
     send_to_inreach(url, [help_msg])
-
-
-def split_long_response(response, max_length=120):
-    """
-    Découpe réponse en messages de 120 chars max
-    UTILISÉ PAR email_monitor.py
-    
-    Note: Les handlers ont leur propre fonction split_long_response()
-    Cette fonction est un wrapper de compatibilité
-    """
-    # Import dynamique pour éviter circular import
-    from claude_handler import split_long_response as claude_split
-    return claude_split(response, max_length)
