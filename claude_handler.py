@@ -1,22 +1,26 @@
-# claude_handler.py - v1.2
+# claude_handler.py - v1.3
 """
 Handler pour API Claude (Anthropic)
 Compatible avec architecture modulaire email_monitor v3.2.2
 
-v1.2: 
-- Découpage optimisé 120 caractères (inReach optimal)
-- Numérotation correcte [1/N], [2/N]... [N/N]
-- Messages équilibrés (pas de message < 30 chars)
+v1.3: 
+- Découpage optimisé pour messages 100-120 chars (meilleur remplissage)
+- Affichage coût + solde dans dernier message
+- Fusion agressive messages courts
 - Nettoyage automatique LaTeX/formules mathématiques
 """
 
 import os
 import re
 import requests
-from typing import Optional
+from typing import Optional, Tuple
 
 
-def handle_claude_maritime_assistant(user_message: str) -> str:
+# Suivi du solde Claude (initialisé à $5.00 par défaut)
+CLAUDE_BALANCE = float(os.getenv('CLAUDE_BALANCE', '5.00'))
+
+
+def handle_claude_maritime_assistant(user_message: str) -> Tuple[str, float]:
     """
     Assistant maritime spécialisé avec Claude
     Optimisé pour questions nautiques, météo, navigation
@@ -25,12 +29,12 @@ def handle_claude_maritime_assistant(user_message: str) -> str:
         user_message: Question de l'utilisateur
         
     Returns:
-        Réponse de Claude (texte brut, nettoyé)
+        Tuple (réponse, coût) - Réponse de Claude + coût de la requête
     """
     api_key = os.getenv('ANTHROPIC_API_KEY')
     
     if not api_key:
-        return "❌ ANTHROPIC_API_KEY non configurée"
+        return ("❌ ANTHROPIC_API_KEY non configurée", 0.0)
     
     try:
         print(f"\n{'='*70}")
@@ -108,23 +112,23 @@ Si question hors contexte maritime: répondre brièvement que tu es spécialisé
             print(f"💰 Coût: ${total_cost:.6f}")
             print(f"{'='*70}\n")
             
-            return answer
+            return (answer, total_cost)
             
         else:
             error_msg = f"❌ Erreur API Claude: {response.status_code}"
             print(error_msg)
             print(f"Réponse: {response.text[:200]}")
-            return f"Erreur Claude: {response.status_code}"
+            return (f"Erreur Claude: {response.status_code}", 0.0)
             
     except Exception as e:
         error_msg = f"❌ Erreur Claude: {str(e)}"
         print(error_msg)
         import traceback
         traceback.print_exc()
-        return f"Erreur: {str(e)[:100]}"
+        return (f"Erreur: {str(e)[:100]}", 0.0)
 
 
-def handle_claude_request(user_message: str, max_tokens: int = 1024) -> str:
+def handle_claude_request(user_message: str, max_tokens: int = 1024) -> Tuple[str, float]:
     """
     Requête Claude générique (non spécialisée maritime)
     
@@ -133,12 +137,12 @@ def handle_claude_request(user_message: str, max_tokens: int = 1024) -> str:
         max_tokens: Limite de tokens (défaut: 1024)
         
     Returns:
-        Réponse de Claude (texte brut, nettoyé)
+        Tuple (réponse, coût) - Réponse de Claude + coût de la requête
     """
     api_key = os.getenv('ANTHROPIC_API_KEY')
     
     if not api_key:
-        return "❌ ANTHROPIC_API_KEY non configurée"
+        return ("❌ ANTHROPIC_API_KEY non configurée", 0.0)
     
     try:
         print(f"\n{'='*70}")
@@ -204,18 +208,18 @@ Reste précis et informatif, mais en texte simple lisible sur tout appareil."""
             print(f"💰 Coût: ${total_cost:.6f}")
             print(f"{'='*70}\n")
             
-            return answer
+            return (answer, total_cost)
             
         else:
             error_msg = f"❌ Erreur API: {response.status_code}"
             print(error_msg)
-            return f"Erreur Claude: {response.status_code}"
+            return (f"Erreur Claude: {response.status_code}", 0.0)
             
     except Exception as e:
         print(f"❌ Erreur: {e}")
         import traceback
         traceback.print_exc()
-        return f"Erreur: {str(e)[:100]}"
+        return (f"Erreur: {str(e)[:100]}", 0.0)
 
 
 def clean_latex(text: str) -> str:
@@ -275,36 +279,49 @@ def clean_latex(text: str) -> str:
     return text.strip()
 
 
-def split_long_response(response: str, max_length: int = 120) -> list:
+def split_long_response(response: str, cost: float = 0.0, max_length: int = 120) -> list:
     """
     Découpe une réponse longue en messages inReach (120 chars optimal)
     Avec numérotation correcte [1/N], [2/N]... [N/N]
+    NOUVEAU: Coût + solde dans dernier message
     
-    OPTIMISATION INREACH:
-    - 120 chars = taille optimale réception inReach
-    - Réserver 8 chars pour "[99/99] "
-    - Messages équilibrés (pas < 30 chars)
+    OPTIMISATION v1.3:
+    - Objectif: messages 100-120 chars (meilleur remplissage)
+    - Fusion agressive messages courts
+    - Dernier message: "Coût: $X.XXXX | Solde: $Y.YY"
     
     Args:
         response: Texte à découper
+        cost: Coût de la requête (pour affichage final)
         max_length: Longueur max par message (défaut: 120)
         
     Returns:
-        Liste de messages découpés et numérotés [1/N], [2/N]...
+        Liste de messages découpés et numérotés avec coût
     """
-    # Si assez court, retourner tel quel
-    if len(response) <= max_length:
-        return [response]
+    global CLAUDE_BALANCE
+    
+    # Si assez court, retourner avec coût
+    if len(response) <= max_length - 35:  # Réserver 35 chars pour coût
+        CLAUDE_BALANCE -= cost
+        balance_str = f" | Coût: ${cost:.4f} | Solde: ${CLAUDE_BALANCE:.2f}"
+        if len(response + balance_str) <= max_length:
+            return [response + balance_str]
+        else:
+            # Séparer en 2 messages
+            return [response, f"Coût: ${cost:.4f} | Solde: ${CLAUDE_BALANCE:.2f}"]
     
     print(f"\n{'='*70}")
-    print(f"✂️  DÉCOUPAGE MESSAGES (max {max_length} chars)")
+    print(f"✂️  DÉCOUPAGE OPTIMISÉ (objectif 100-120 chars)")
     print(f"{'='*70}")
     print(f"Texte original: {len(response)} chars\n")
     
     # Réserver 8 chars pour numérotation "[99/99] "
     usable_length = max_length - 8
     
-    # Découpage par phrases pour meilleure lisibilité
+    # Objectif: messages entre 100-120 chars (bon remplissage)
+    target_length = 100
+    
+    # Découpage par phrases
     sentences = re.split(r'([.!?]\s+)', response)
     
     messages = []
@@ -313,19 +330,22 @@ def split_long_response(response: str, max_length: int = 120) -> list:
     for i in range(0, len(sentences), 2):
         sentence = sentences[i]
         if i + 1 < len(sentences):
-            sentence += sentences[i + 1]  # Ajouter ponctuation
+            sentence += sentences[i + 1]
         
-        # Test si on peut ajouter cette phrase
         test_msg = current_msg + sentence if current_msg else sentence
         
+        # Stratégie: remplir jusqu'à target_length (100 chars)
         if len(test_msg) <= usable_length:
             current_msg = test_msg
+            # Si on dépasse 100 chars ET il reste des phrases, on coupe
+            if len(current_msg) >= target_length and i + 2 < len(sentences):
+                messages.append(current_msg.strip())
+                current_msg = ""
         else:
-            # Message actuel est plein
             if current_msg:
                 messages.append(current_msg.strip())
             
-            # Si phrase trop longue, découper par mots
+            # Phrase trop longue -> découper par mots
             if len(sentence) > usable_length:
                 words = sentence.split()
                 temp_msg = ""
@@ -341,28 +361,31 @@ def split_long_response(response: str, max_length: int = 120) -> list:
             else:
                 current_msg = sentence
     
-    # Ajouter dernier message
     if current_msg.strip():
         messages.append(current_msg.strip())
     
-    # FUSION messages trop courts (< 30 chars)
-    cleaned_messages = []
-    for i, msg in enumerate(messages):
-        if len(msg) < 30 and cleaned_messages:
-            # Fusionner avec précédent si ça tient
-            last = cleaned_messages[-1]
-            combined = last + " " + msg
+    # FUSION AGRESSIVE messages courts (< 50 chars)
+    optimized = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        
+        # Essayer de fusionner avec suivants si trop court
+        while len(msg) < 50 and i + 1 < len(messages):
+            combined = msg + " " + messages[i + 1]
             if len(combined) <= usable_length:
-                cleaned_messages[-1] = combined
-                print(f"🔗 Fusion msg court ({len(msg)} chars) avec précédent")
+                msg = combined
+                i += 1
+                print(f"🔗 Fusion: {len(msg)} chars")
             else:
-                cleaned_messages.append(msg)
-        else:
-            cleaned_messages.append(msg)
+                break
+        
+        optimized.append(msg)
+        i += 1
     
-    messages = cleaned_messages
+    messages = optimized
     
-    # AJOUTER NUMÉROTATION [1/N], [2/N]... [N/N]
+    # AJOUTER NUMÉROTATION
     total = len(messages)
     numbered_messages = []
     
@@ -370,36 +393,51 @@ def split_long_response(response: str, max_length: int = 120) -> list:
     
     for i, msg in enumerate(messages, 1):
         prefix = f"[{i}/{total}] "
-        numbered = prefix + msg
         
-        # Vérifier longueur finale
-        if len(numbered) > max_length:
-            # Tronquer le message pour respecter limite
-            available = max_length - len(prefix) - 3  # -3 pour "..."
-            msg = msg[:available] + "..."
+        # Dernier message: ajouter coût + solde
+        if i == total:
+            CLAUDE_BALANCE -= cost
+            suffix = f" | Coût: ${cost:.4f} | Solde: ${CLAUDE_BALANCE:.2f}"
+            
+            # Vérifier si ça tient
+            numbered = prefix + msg + suffix
+            if len(numbered) <= max_length:
+                numbered_messages.append(numbered)
+                print(f"✅ [{i}/{total}] {len(numbered)} chars (avec coût): {numbered[:60]}...")
+            else:
+                # Tronquer message pour faire tenir le coût
+                available = max_length - len(prefix) - len(suffix) - 3
+                if available > 20:
+                    msg = msg[:available] + "..."
+                    numbered = prefix + msg + suffix
+                    numbered_messages.append(numbered)
+                    print(f"⚠️  [{i}/{total}] tronqué pour coût: {len(numbered)} chars")
+                else:
+                    # Impossible de tout mettre, séparer
+                    numbered_messages.append(prefix + msg)
+                    numbered_messages.append(f"[{total+1}/{total+1}] Coût: ${cost:.4f} | Solde: ${CLAUDE_BALANCE:.2f}")
+                    print(f"⚠️  Coût séparé en message additionnel")
+        else:
             numbered = prefix + msg
-            print(f"⚠️  Msg {i}/{total} tronqué: {len(numbered)} chars")
-        
-        numbered_messages.append(numbered)
-        print(f"✅ [{i}/{total}] {len(numbered)} chars: {numbered[:50]}...")
-    
-    # Sécurité: si > 15 messages, limiter
-    if len(numbered_messages) > 15:
-        print(f"\n⚠️  Réponse trop longue ({len(numbered_messages)} msgs), limitation à 15")
-        numbered_messages = numbered_messages[:15]
-        # Mettre à jour numérotation
-        numbered_messages = []
-        for i, msg in enumerate(messages[:15], 1):
-            prefix = f"[{i}/15] "
-            numbered = prefix + msg
+            
             if len(numbered) > max_length:
                 available = max_length - len(prefix) - 3
                 msg = msg[:available] + "..."
                 numbered = prefix + msg
+                print(f"⚠️  Msg {i}/{total} tronqué: {len(numbered)} chars")
+            
             numbered_messages.append(numbered)
+            print(f"✅ [{i}/{total}] {len(numbered)} chars: {numbered[:60]}...")
+    
+    # Limite sécurité
+    if len(numbered_messages) > 15:
+        print(f"\n⚠️  Limitation à 15 messages")
+        numbered_messages = numbered_messages[:15]
     
     print(f"\n{'='*70}")
     print(f"✅ DÉCOUPAGE TERMINÉ: {len(numbered_messages)} messages")
+    print(f"💰 Coût requête: ${cost:.4f}")
+    print(f"💳 Solde restant: ${CLAUDE_BALANCE:.2f}")
     print(f"{'='*70}\n")
     
     return numbered_messages
@@ -408,29 +446,21 @@ def split_long_response(response: str, max_length: int = 120) -> list:
 # Test du module
 if __name__ == "__main__":
     print("="*70)
-    print("TEST CLAUDE HANDLER v1.2")
+    print("TEST CLAUDE HANDLER v1.3")
     print("="*70)
     
-    # Test 1: Nettoyage LaTeX
-    print("\n📝 Test 1: Nettoyage LaTeX")
+    # Test découpage avec coût
+    print("\n📝 Test: Découpage optimisé avec coût")
     print("-"*70)
-    latex_text = r"Le fer métallique (Fe) perd des électrons et se transforme en ions ferreux (Fe^{2+}) : \[ \text{Fe} \rightarrow \text{Fe}^{2+} + 2e^- \]"
-    cleaned = clean_latex(latex_text)
-    print(f"Original: {latex_text}")
-    print(f"Nettoyé: {cleaned}\n")
     
-    # Test 2: Découpage 120 chars avec numérotation correcte
-    print("\n📝 Test 2: Découpage 120 chars")
-    print("-"*70)
-    long_text = """Pour redresser une pièce en inox, chauffez localement la zone bombée avec un chalumeau jusqu'à rouge sombre (600-700°C), puis refroidissez rapidement à l'eau. La contraction lors du refroidissement aide à redresser. Vous pouvez aussi utiliser un marteau et une enclume pour marteler progressivement. Pour de grandes pièces, utilisez une presse hydraulique avec des matrices adaptées. Consultez un professionnel si déformation importante."""
+    long_text = """Pour redresser une pièce en inox, chauffez localement la zone bombée avec un chalumeau jusqu'à rouge sombre (600-700°C), puis refroidissez rapidement à l'eau. La contraction lors du refroidissement aide à redresser. Vous pouvez aussi utiliser un marteau et une enclume pour marteler progressivement. Pour de grandes pièces, utilisez une presse hydraulique avec des matrices adaptées."""
     
-    messages = split_long_response(long_text, max_length=120)
-    print(f"\nTexte original: {len(long_text)} chars")
-    print(f"Découpé en: {len(messages)} messages")
-    print(f"\nMessages finaux:")
+    messages = split_long_response(long_text, cost=0.0023, max_length=120)
+    
+    print(f"\nTexte: {len(long_text)} chars")
+    print(f"Messages: {len(messages)}")
+    print(f"\nRésultat:")
     for msg in messages:
-        print(f"  {msg}")
+        print(f"  [{len(msg)} chars] {msg}")
     
     print("\n" + "="*70)
-    print("TESTS TERMINÉS")
-    print("="*70)
