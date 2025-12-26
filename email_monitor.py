@@ -1,7 +1,10 @@
-# email_monitor.py - v3.2.1
+# email_monitor.py - v3.2.2
 """
 Surveillance Gmail pour requêtes GRIB et AI (Claude/Mistral)
-v3.2.1: FIX socket error EOF - Fermeture IMAP avant envoi messages
+v3.2.2: 
+- FIX patterns tolérants (cg150 ou cg 150 ou CG 150)
+- Détection insensible à la casse
+- Tolérance espaces optionnels
 
 PATTERNS MARITIMES (assistant spécialisé navigation):
 - c 150: question       → Claude maritime
@@ -34,7 +37,7 @@ def check_gmail():
     Vérifie Gmail pour nouvelles requêtes inReach
     Détecte et route: GRIB, Claude (maritime/générique), Mistral (maritime/générique/météo)
     
-    v3.2.1: Fermeture IMAP AVANT traitement pour éviter socket error EOF
+    v3.2.2: Patterns tolérants (avec/sans espace, casse insensible)
     """
     print("\n" + "="*70)
     print(f"🔄 VÉRIFICATION EMAIL - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -131,7 +134,6 @@ def check_gmail():
         # ========================================
         # PHASE 2: FERMETURE IMAP
         # ========================================
-        # CRITIQUE: Fermer AVANT traitement pour éviter timeout
         
         print(f"\n{'='*70}")
         print("📋 FIN LECTURE EMAILS - Fermeture IMAP")
@@ -141,7 +143,7 @@ def check_gmail():
             try:
                 mail.logout()
                 print("✅ IMAP déconnecté proprement\n")
-                mail = None  # Important: marquer comme fermé
+                mail = None
             except Exception as e:
                 print(f"⚠️  Erreur logout IMAP (ignorée): {e}\n")
                 mail = None
@@ -163,9 +165,6 @@ def check_gmail():
             print(f"📋 Requête {idx}/{len(requests_found)}")
             print(f"{'='*70}")
             
-            # Traitement selon type
-            # NOTE: Pour GRIB, on doit reconnecter IMAP temporairement
-            
             if req['type'] == 'claude_maritime':
                 process_claude_maritime_wrapper(req)
             
@@ -182,8 +181,6 @@ def check_gmail():
                 process_weather_wrapper(req)
             
             elif req['type'] == 'grib':
-                # GRIB nécessite IMAP pour attendre réponse Saildocs
-                # On reconnecte temporairement
                 print("🔄 Reconnexion IMAP pour GRIB...")
                 try:
                     grib_mail = imaplib.IMAP4_SSL('imap.gmail.com', 993)
@@ -209,7 +206,6 @@ def check_gmail():
         traceback.print_exc()
     
     finally:
-        # Sécurité: toujours fermer IMAP si encore ouvert
         if mail:
             try:
                 mail.logout()
@@ -269,36 +265,35 @@ def extract_reply_url(body):
 
 def detect_request_type(body):
     """
-    Détecte le type de requête avec patterns courts
+    Détecte le type de requête avec patterns TOLÉRANTS
     
-    MARITIMES:
-    - c 150: question       → Claude maritime
-    - m 150: question       → Mistral maritime
-    - w 150: question       → Weather expert
-    - claude 150: question  → Claude maritime
-    - mistral 150: question → Mistral maritime
+    TOLÉRANCE:
+    - Espaces optionnels: "cg150" ou "cg 150"
+    - Casse insensible: "cg", "CG", "Cg"
     
-    GÉNÉRIQUES:
-    - cg 150: question      → Claude générique
-    - mg 150: question      → Mistral générique
-    
-    GRIB:
-    - ecmwf:...
+    PATTERNS:
+    - cg\s*150: question      → Claude générique
+    - mg\s*150: question      → Mistral générique
+    - c\s*150: question       → Claude maritime
+    - m\s*150: question       → Mistral maritime
+    - w\s*150: question       → Weather expert
+    - claude\s*150: question  → Claude maritime
+    - mistral\s*150: question → Mistral maritime
     
     Returns:
         dict avec type et paramètres, ou None
     """
     print(f"\n{'='*70}")
-    print("🔍 DÉTECTION TYPE DE REQUÊTE")
+    print("🔍 DÉTECTION TYPE DE REQUÊTE (patterns tolérants)")
     print(f"{'='*70}")
     
     # ========================================
     # PATTERNS GÉNÉRIQUES (priorité haute)
     # ========================================
     
-    # PATTERN 1: Claude générique "cg 150: question"
+    # PATTERN 1: Claude générique "cg 150: question" ou "cg150: question"
     cg_pattern = re.compile(
-        r'\bcg\s+(\d+)\s*:\s*(.+)',
+        r'\bcg\s*(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
     match = cg_pattern.search(body)
@@ -318,9 +313,9 @@ def detect_request_type(body):
             'question': question
         }
     
-    # PATTERN 2: Mistral générique "mg 150: question"
+    # PATTERN 2: Mistral générique "mg 150: question" ou "mg150: question"
     mg_pattern = re.compile(
-        r'\bmg\s+(\d+)\s*:\s*(.+)',
+        r'\bmg\s*(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
     match = mg_pattern.search(body)
@@ -344,9 +339,9 @@ def detect_request_type(body):
     # PATTERNS MARITIMES
     # ========================================
     
-    # PATTERN 3: Claude maritime court "c 150: question"
+    # PATTERN 3: Claude maritime court "c 150: question" ou "c150: question"
     c_pattern = re.compile(
-        r'\bc\s+(\d+)\s*:\s*(.+)',
+        r'\bc\s*(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
     match = c_pattern.search(body)
@@ -366,9 +361,9 @@ def detect_request_type(body):
             'question': question
         }
     
-    # PATTERN 4: Mistral maritime court "m 150: question"
+    # PATTERN 4: Mistral maritime court "m 150: question" ou "m150: question"
     m_pattern = re.compile(
-        r'\bm\s+(\d+)\s*:\s*(.+)',
+        r'\bm\s*(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
     match = m_pattern.search(body)
@@ -388,9 +383,9 @@ def detect_request_type(body):
             'question': question
         }
     
-    # PATTERN 5: Weather expert "w 150: question"
+    # PATTERN 5: Weather expert "w 150: question" ou "w150: question"
     w_pattern = re.compile(
-        r'\bw\s+(\d+)\s*:\s*(.+)',
+        r'\bw\s*(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
     match = w_pattern.search(body)
@@ -410,9 +405,9 @@ def detect_request_type(body):
             'question': question
         }
     
-    # PATTERN 6: Claude maritime long "claude 150: question" (compatibilité)
+    # PATTERN 6: Claude maritime long "claude 150: question" ou "claude150: question"
     claude_long = re.compile(
-        r'\b(claude|gpt)\s+(\d+)\s*:\s*(.+)',
+        r'\b(claude|gpt)\s*(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
     match = claude_long.search(body)
@@ -432,9 +427,9 @@ def detect_request_type(body):
             'question': question
         }
     
-    # PATTERN 7: Mistral maritime long "mistral 150: question" (compatibilité)
+    # PATTERN 7: Mistral maritime long "mistral 150: question" ou "mistral150: question"
     mistral_long = re.compile(
-        r'\bmistral\s+(\d+)\s*:\s*(.+)',
+        r'\bmistral\s*(\d+)\s*:\s*(.+)',
         re.IGNORECASE | re.DOTALL
     )
     match = mistral_long.search(body)
@@ -458,13 +453,12 @@ def detect_request_type(body):
     # PATTERNS SANS QUESTION (messages d'aide)
     # ========================================
     
-    # Sans question = message d'aide
     for pattern, ai_type in [
-        (r'\bc\s+(\d+)\s*$', 'claude_maritime'),
-        (r'\bm\s+(\d+)\s*$', 'mistral_maritime'),
-        (r'\bcg\s+(\d+)\s*$', 'claude_generic'),
-        (r'\bmg\s+(\d+)\s*$', 'mistral_generic'),
-        (r'\bw\s+(\d+)\s*$', 'weather'),
+        (r'\bc\s*(\d+)\s*$', 'claude_maritime'),
+        (r'\bm\s*(\d+)\s*$', 'mistral_maritime'),
+        (r'\bcg\s*(\d+)\s*$', 'claude_generic'),
+        (r'\bmg\s*(\d+)\s*$', 'mistral_generic'),
+        (r'\bw\s*(\d+)\s*$', 'weather'),
     ]:
         match = re.search(pattern, body, re.IGNORECASE | re.MULTILINE)
         if match:
@@ -512,7 +506,7 @@ def process_claude_maritime_wrapper(req):
         
         try:
             response = handle_claude_maritime_assistant(req['question'])
-            messages = split_long_response(response, max_length=160)
+            messages = split_long_response(response, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -539,7 +533,7 @@ def process_claude_generic_wrapper(req):
         
         try:
             response = handle_claude_request(req['question'], req['max_tokens'])
-            messages = split_long_response(response, max_length=160)
+            messages = split_long_response(response, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -566,7 +560,7 @@ def process_mistral_maritime_wrapper(req):
         
         try:
             response = handle_mistral_maritime_assistant(req['question'])
-            messages = split_long_response(response, max_length=160)
+            messages = split_long_response(response, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -593,7 +587,7 @@ def process_mistral_generic_wrapper(req):
         
         try:
             response = handle_mistral_request(req['question'], req['max_tokens'])
-            messages = split_long_response(response, max_length=160)
+            messages = split_long_response(response, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -620,7 +614,7 @@ def process_weather_wrapper(req):
         
         try:
             response = handle_mistral_weather_expert(req['question'])
-            messages = split_long_response(response, max_length=160)
+            messages = split_long_response(response, max_length=120)
             
             print(f"✅ {len(messages)} message(s)")
             print(f"\n📤 Envoi...")
@@ -642,26 +636,14 @@ def send_help_message(url, example):
     send_to_inreach(url, [help_msg])
 
 
-def split_long_response(response, max_length=160):
-    """Découpe réponse en messages"""
-    if len(response) <= max_length:
-        return [response]
+def split_long_response(response, max_length=120):
+    """
+    Découpe réponse en messages de 120 chars max
+    UTILISÉ PAR email_monitor.py
     
-    messages = []
-    words = response.split()
-    current_msg = ""
-    
-    for word in words:
-        test_msg = current_msg + " " + word if current_msg else word
-        
-        if len(test_msg) <= max_length:
-            current_msg = test_msg
-        else:
-            if current_msg:
-                messages.append(current_msg)
-            current_msg = word
-    
-    if current_msg:
-        messages.append(current_msg)
-    
-    return messages
+    Note: Les handlers ont leur propre fonction split_long_response()
+    Cette fonction est un wrapper de compatibilité
+    """
+    # Import dynamique pour éviter circular import
+    from claude_handler import split_long_response as claude_split
+    return claude_split(response, max_length)

@@ -1,12 +1,13 @@
-# mistral_handler.py - v1.1
+# mistral_handler.py - v1.2
 """
 Handler pour API Mistral AI
-Compatible avec architecture modulaire email_monitor v3.2.1
+Compatible avec architecture modulaire email_monitor v3.2.2
 
-v1.1:
+v1.2:
+- Découpage optimisé 120 caractères (inReach optimal)
+- Numérotation correcte [1/N], [2/N]... [N/N]
+- Messages équilibrés (pas de message < 30 chars)
 - Nettoyage automatique LaTeX/formules mathématiques
-- Découpage messages intelligent avec numérotation équilibrée
-- Pas de messages < 20 chars
 """
 
 import os
@@ -59,7 +60,7 @@ Expertise:
 - Interprétation fichiers GRIB
 
 RÈGLES STRICTES:
-- MAX 160 caractères par réponse
+- MAX 120 caractères par réponse
 - Info essentielle UNIQUEMENT
 - Vocabulaire maritime précis
 - Conseils pratiques directs
@@ -346,15 +347,6 @@ def clean_latex(text: str) -> str:
     text = re.sub(r'_(\w)', r'\1', text)
     
     # Supprimer autres commandes LaTeX courantes
-    latex_commands = [
-        r'\\cdot', r'\\times', r'\\pm', r'\\div',
-        r'\\infty', r'\\approx', r'\\equiv', r'\\neq',
-        r'\\le', r'\\ge', r'\\ll', r'\\gg',
-        r'\\alpha', r'\\beta', r'\\gamma', r'\\delta',
-        r'\\pi', r'\\theta', r'\\lambda', r'\\mu',
-        r'\\sum', r'\\int', r'\\partial', r'\\nabla'
-    ]
-    
     replacements = {
         r'\\cdot': '*',
         r'\\times': 'x',
@@ -373,10 +365,6 @@ def clean_latex(text: str) -> str:
     for cmd, repl in replacements.items():
         text = text.replace(cmd, repl)
     
-    # Supprimer commandes LaTeX restantes
-    for cmd in latex_commands:
-        text = text.replace(cmd, '')
-    
     # Supprimer $...$ (inline math)
     text = re.sub(r'\$([^$]+)\$', r'\1', text)
     
@@ -389,23 +377,32 @@ def clean_latex(text: str) -> str:
     return text.strip()
 
 
-def split_long_response(response: str, max_length: int = 160) -> list:
+def split_long_response(response: str, max_length: int = 120) -> list:
     """
-    Découpe une réponse longue en messages inReach (max 160 chars)
-    Avec numérotation intelligente [1/N] et messages équilibrés
+    Découpe une réponse longue en messages inReach (120 chars optimal)
+    Avec numérotation correcte [1/N], [2/N]... [N/N]
+    
+    OPTIMISATION INREACH:
+    - 120 chars = taille optimale réception inReach
+    - Réserver 8 chars pour "[99/99] "
+    - Messages équilibrés (pas < 30 chars)
     
     Args:
         response: Texte à découper
-        max_length: Longueur max par message (défaut: 160)
+        max_length: Longueur max par message (défaut: 120)
         
     Returns:
-        Liste de messages découpés et numérotés
+        Liste de messages découpés et numérotés [1/N], [2/N]...
     """
     # Si assez court, retourner tel quel
     if len(response) <= max_length:
         return [response]
     
-    # Estimer nombre de messages nécessaires
+    print(f"\n{'='*70}")
+    print(f"✂️  DÉCOUPAGE MESSAGES (max {max_length} chars)")
+    print(f"{'='*70}")
+    print(f"Texte original: {len(response)} chars\n")
+    
     # Réserver 8 chars pour numérotation "[99/99] "
     usable_length = max_length - 8
     
@@ -450,16 +447,16 @@ def split_long_response(response: str, max_length: int = 160) -> list:
     if current_msg.strip():
         messages.append(current_msg.strip())
     
-    # Vérifier pas de messages trop courts (< 20 chars)
-    # Les fusionner avec le précédent si possible
+    # FUSION messages trop courts (< 30 chars)
     cleaned_messages = []
     for i, msg in enumerate(messages):
-        if len(msg) < 20 and cleaned_messages:
+        if len(msg) < 30 and cleaned_messages:
             # Fusionner avec précédent si ça tient
             last = cleaned_messages[-1]
             combined = last + " " + msg
             if len(combined) <= usable_length:
                 cleaned_messages[-1] = combined
+                print(f"🔗 Fusion msg court ({len(msg)} chars) avec précédent")
             else:
                 cleaned_messages.append(msg)
         else:
@@ -467,9 +464,11 @@ def split_long_response(response: str, max_length: int = 160) -> list:
     
     messages = cleaned_messages
     
-    # Ajouter numérotation [1/N], [2/N], etc.
+    # AJOUTER NUMÉROTATION [1/N], [2/N]... [N/N]
     total = len(messages)
     numbered_messages = []
+    
+    print(f"📊 Total: {total} message(s)\n")
     
     for i, msg in enumerate(messages, 1):
         prefix = f"[{i}/{total}] "
@@ -481,17 +480,19 @@ def split_long_response(response: str, max_length: int = 160) -> list:
             available = max_length - len(prefix) - 3  # -3 pour "..."
             msg = msg[:available] + "..."
             numbered = prefix + msg
+            print(f"⚠️  Msg {i}/{total} tronqué: {len(numbered)} chars")
         
         numbered_messages.append(numbered)
+        print(f"✅ [{i}/{total}] {len(numbered)} chars: {numbered[:50]}...")
     
-    # Sécurité: si > 10 messages, limiter à 10
-    if len(numbered_messages) > 10:
-        print(f"⚠️  Réponse trop longue ({len(numbered_messages)} msgs), limitation à 10")
-        numbered_messages = numbered_messages[:10]
+    # Sécurité: si > 15 messages, limiter
+    if len(numbered_messages) > 15:
+        print(f"\n⚠️  Réponse trop longue ({len(numbered_messages)} msgs), limitation à 15")
+        numbered_messages = numbered_messages[:15]
         # Mettre à jour numérotation
         numbered_messages = []
-        for i, msg in enumerate(messages[:10], 1):
-            prefix = f"[{i}/10] "
+        for i, msg in enumerate(messages[:15], 1):
+            prefix = f"[{i}/15] "
             numbered = prefix + msg
             if len(numbered) > max_length:
                 available = max_length - len(prefix) - 3
@@ -499,13 +500,17 @@ def split_long_response(response: str, max_length: int = 160) -> list:
                 numbered = prefix + msg
             numbered_messages.append(numbered)
     
+    print(f"\n{'='*70}")
+    print(f"✅ DÉCOUPAGE TERMINÉ: {len(numbered_messages)} messages")
+    print(f"{'='*70}\n")
+    
     return numbered_messages
 
 
 # Test du module
 if __name__ == "__main__":
     print("="*70)
-    print("TEST MISTRAL HANDLER v1.1")
+    print("TEST MISTRAL HANDLER v1.2")
     print("="*70)
     
     # Test 1: Nettoyage LaTeX
@@ -516,19 +521,18 @@ if __name__ == "__main__":
     print(f"Original: {latex_text}")
     print(f"Nettoyé: {cleaned}\n")
     
-    # Test 2: Découpage intelligent
-    print("\n📝 Test 2: Découpage messages")
+    # Test 2: Découpage 120 chars avec numérotation correcte
+    print("\n📝 Test 2: Découpage 120 chars")
     print("-"*70)
-    long_text = """Pour prévenir la corrosion de l'inox marin, rincez régulièrement à l'eau douce pour éliminer le sel. Appliquez une couche de cire protectrice ou d'huile sur les pièces exposées. Évitez le contact avec des métaux différents qui causent une corrosion galvanique. Inspectez et nettoyez les zones difficiles d'accès mensuellement."""
+    long_text = """Pour prévenir la corrosion de l'inox marin, rincez régulièrement à l'eau douce pour éliminer le sel. Appliquez une couche de cire protectrice ou d'huile sur les pièces exposées. Évitez le contact avec des métaux différents qui causent une corrosion galvanique. Inspectez et nettoyez les zones difficiles d'accès mensuellement. Utilisez des produits anti-corrosion marins spécialisés pour protection longue durée."""
     
-    messages = split_long_response(long_text, max_length=160)
-    print(f"Texte original: {len(long_text)} chars")
-    print(f"Découpé en: {len(messages)} messages\n")
-    for i, msg in enumerate(messages, 1):
-        print(f"Message {i}: ({len(msg)} chars)")
-        print(f"  '{msg}'")
-        print()
+    messages = split_long_response(long_text, max_length=120)
+    print(f"\nTexte original: {len(long_text)} chars")
+    print(f"Découpé en: {len(messages)} messages")
+    print(f"\nMessages finaux:")
+    for msg in messages:
+        print(f"  {msg}")
     
-    print("="*70)
+    print("\n" + "="*70)
     print("TESTS TERMINÉS")
     print("="*70)
