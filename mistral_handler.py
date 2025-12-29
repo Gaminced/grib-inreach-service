@@ -1,13 +1,14 @@
-# mistral_handler.py - v1.3
+# mistral_handler.py - v1.4
 """
 Handler pour API Mistral AI
-Compatible avec architecture modulaire email_monitor v3.2.2
+Compatible avec architecture modulaire email_monitor v3.2.3
 
-v1.3:
-- Découpage optimisé pour messages 100-120 chars (meilleur remplissage)
-- Affichage coût + solde dans dernier message
-- Fusion agressive messages courts
-- Nettoyage automatique LaTeX/formules mathématiques
+v1.4:
+- ALGORITHME ROBUSTE découpage équilibré
+- Messages 110 chars minimum (sauf exceptions)
+- Distribution équitable du texte
+- Fusion agressive < 80 chars
+- Coût + solde dans dernier message
 """
 
 import os
@@ -307,7 +308,7 @@ Unités: nœuds, mbar, degrés vrais."""
             
             print(f"✅ Réponse Weather: {len(answer)} chars")
             print(f"📊 Tokens: {input_tokens}/{output_tokens}")
-            print(f"💰 Coût: ${total_cost:.6f}")
+            print(f"💰 Coût: ${total_cost:.4f}")
             print(f"{'='*70}\n")
             
             return (answer, total_cost)
@@ -383,102 +384,104 @@ def clean_latex(text: str) -> str:
 
 def split_long_response(response: str, cost: float = 0.0, max_length: int = 120) -> list:
     """
-    Découpe une réponse longue en messages inReach (120 chars optimal)
-    Avec numérotation correcte [1/N], [2/N]... [N/N]
-    NOUVEAU: Coût + solde dans dernier message
+    ALGORITHME ROBUSTE v1.4
+    Découpe équilibrée avec messages 110 chars minimum
     
-    OPTIMISATION v1.3:
-    - Objectif: messages 100-120 chars (meilleur remplissage)
-    - Fusion agressive messages courts
-    - Dernier message: "Coût: $X.XXXX | Solde: $Y.YY"
+    STRATÉGIE:
+    1. Calcul nombre optimal de messages (total_chars / 110)
+    2. Distribution équitable par mots
+    3. Fusion agressive < 80 chars
+    4. Coût dans dernier message
     
     Args:
         response: Texte à découper
-        cost: Coût de la requête (pour affichage final)
-        max_length: Longueur max par message (défaut: 120)
+        cost: Coût de la requête
+        max_length: Longueur max (120)
         
     Returns:
-        Liste de messages découpés et numérotés avec coût
+        Liste messages équilibrés avec coût
     """
     global MISTRAL_BALANCE
     
-    # Si assez court, retourner avec coût
-    if len(response) <= max_length - 35:  # Réserver 35 chars pour coût
-        MISTRAL_BALANCE -= cost
-        balance_str = f" | Coût: ${cost:.4f} | Solde: ${MISTRAL_BALANCE:.2f}"
-        if len(response + balance_str) <= max_length:
-            return [response + balance_str]
-        else:
-            # Séparer en 2 messages
-            return [response, f"Coût: ${cost:.4f} | Solde: ${MISTRAL_BALANCE:.2f}"]
-    
     print(f"\n{'='*70}")
-    print(f"✂️  DÉCOUPAGE OPTIMISÉ (objectif 100-120 chars)")
+    print(f"✂️  DÉCOUPAGE ROBUSTE v1.4")
     print(f"{'='*70}")
     print(f"Texte original: {len(response)} chars\n")
     
-    # Réserver 8 chars pour numérotation "[99/99] "
-    usable_length = max_length - 8
+    # Réserver espace pour numérotation + coût
+    prefix_space = 8  # "[99/99] "
+    cost_space = 35   # " | Coût: $X.XXXX | Solde: $Y.YY"
+    usable_length = max_length - prefix_space
     
-    # Objectif: messages entre 100-120 chars (bon remplissage)
-    target_length = 100
+    # Si très court, retourner avec coût
+    if len(response) <= max_length - cost_space:
+        MISTRAL_BALANCE -= cost
+        suffix = f" | Coût: ${cost:.4f} | Solde: ${MISTRAL_BALANCE:.2f}"
+        if len(response + suffix) <= max_length:
+            return [response + suffix]
     
-    # Découpage par phrases
-    sentences = re.split(r'([.!?]\s+)', response)
+    # CALCUL NOMBRE OPTIMAL DE MESSAGES
+    # Objectif: 110 chars par message (bon compromis)
+    target_per_msg = 110
+    estimated_msgs = max(1, int(len(response) / target_per_msg) + 1)
+    
+    print(f"📊 Estimation: {estimated_msgs} messages (~{target_per_msg} chars/msg)")
+    
+    # DÉCOUPAGE PAR MOTS (plus robuste que par phrases)
+    words = response.split()
+    total_words = len(words)
+    
+    if total_words == 0:
+        return [response]
+    
+    # Distribution équitable des mots
+    words_per_msg = max(1, total_words // estimated_msgs)
     
     messages = []
     current_msg = ""
+    word_count = 0
     
-    for i in range(0, len(sentences), 2):
-        sentence = sentences[i]
-        if i + 1 < len(sentences):
-            sentence += sentences[i + 1]
+    for i, word in enumerate(words):
+        test_msg = current_msg + " " + word if current_msg else word
         
-        test_msg = current_msg + sentence if current_msg else sentence
-        
-        # Stratégie: remplir jusqu'à target_length (100 chars)
+        # Stratégie: remplir jusqu'à target_per_msg (110 chars)
         if len(test_msg) <= usable_length:
             current_msg = test_msg
-            # Si on dépasse 100 chars ET il reste des phrases, on coupe
-            if len(current_msg) >= target_length and i + 2 < len(sentences):
-                messages.append(current_msg.strip())
-                current_msg = ""
+            word_count += 1
+            
+            # Couper si on atteint target OU quota mots
+            if (len(current_msg) >= target_per_msg or word_count >= words_per_msg) and i < total_words - 1:
+                # Vérifier qu'on a assez rempli (> 80 chars)
+                if len(current_msg) >= 80:
+                    messages.append(current_msg.strip())
+                    current_msg = ""
+                    word_count = 0
         else:
+            # Message plein
             if current_msg:
                 messages.append(current_msg.strip())
-            
-            # Phrase trop longue -> découper par mots
-            if len(sentence) > usable_length:
-                words = sentence.split()
-                temp_msg = ""
-                for word in words:
-                    test = temp_msg + " " + word if temp_msg else word
-                    if len(test) <= usable_length:
-                        temp_msg = test
-                    else:
-                        if temp_msg:
-                            messages.append(temp_msg.strip())
-                        temp_msg = word
-                current_msg = temp_msg
-            else:
-                current_msg = sentence
+            current_msg = word
+            word_count = 1
     
+    # Ajouter dernier message
     if current_msg.strip():
         messages.append(current_msg.strip())
     
-    # FUSION AGRESSIVE messages courts (< 50 chars)
+    # FUSION AGRESSIVE messages < 80 chars
+    print(f"\n🔗 Fusion messages courts...")
     optimized = []
     i = 0
+    
     while i < len(messages):
         msg = messages[i]
         
-        # Essayer de fusionner avec suivants si trop court
-        while len(msg) < 50 and i + 1 < len(messages):
+        # Fusionner avec suivants si < 80 chars
+        while len(msg) < 80 and i + 1 < len(messages):
             combined = msg + " " + messages[i + 1]
             if len(combined) <= usable_length:
                 msg = combined
                 i += 1
-                print(f"🔗 Fusion: {len(msg)} chars")
+                print(f"   Fusion: {len(msg)} chars")
             else:
                 break
         
@@ -487,38 +490,53 @@ def split_long_response(response: str, cost: float = 0.0, max_length: int = 120)
     
     messages = optimized
     
-    # AJOUTER NUMÉROTATION
+    # VALIDATION: aucun message < 70 chars (sauf si dernier avec coût)
+    print(f"\n✅ Validation longueurs...")
+    final_messages = []
+    
+    for i, msg in enumerate(messages):
+        if len(msg) < 70 and i < len(messages) - 1:
+            # Trop court: fusionner avec suivant
+            if i + 1 < len(messages):
+                messages[i + 1] = msg + " " + messages[i + 1]
+                print(f"   ⚠️  Msg {i+1} trop court ({len(msg)} chars), fusionné")
+                continue
+        final_messages.append(msg)
+    
+    messages = final_messages
+    
+    # NUMÉROTATION + COÛT
     total = len(messages)
     numbered_messages = []
     
-    print(f"📊 Total: {total} message(s)\n")
+    print(f"\n📊 Messages finaux: {total}")
     
     for i, msg in enumerate(messages, 1):
         prefix = f"[{i}/{total}] "
         
-        # Dernier message: ajouter coût + solde
+        # Dernier message: ajouter coût
         if i == total:
             MISTRAL_BALANCE -= cost
             suffix = f" | Coût: ${cost:.4f} | Solde: ${MISTRAL_BALANCE:.2f}"
             
-            # Vérifier si ça tient
             numbered = prefix + msg + suffix
+            
             if len(numbered) <= max_length:
                 numbered_messages.append(numbered)
-                print(f"✅ [{i}/{total}] {len(numbered)} chars (avec coût): {numbered[:60]}...")
+                print(f"   ✅ [{i}/{total}] {len(numbered)} chars (avec coût)")
             else:
-                # Tronquer message pour faire tenir le coût
+                # Tronquer pour faire tenir le coût
                 available = max_length - len(prefix) - len(suffix) - 3
-                if available > 20:
+                if available > 30:
                     msg = msg[:available] + "..."
                     numbered = prefix + msg + suffix
                     numbered_messages.append(numbered)
-                    print(f"⚠️  [{i}/{total}] tronqué pour coût: {len(numbered)} chars")
+                    print(f"   ⚠️  [{i}/{total}] tronqué: {len(numbered)} chars")
                 else:
-                    # Impossible de tout mettre, séparer
+                    # Séparer le coût
                     numbered_messages.append(prefix + msg)
                     numbered_messages.append(f"[{total+1}/{total+1}] Coût: ${cost:.4f} | Solde: ${MISTRAL_BALANCE:.2f}")
-                    print(f"⚠️  Coût séparé en message additionnel")
+                    print(f"   ⚠️  Coût séparé")
         else:
             numbered = prefix + msg
             
@@ -526,20 +544,14 @@ def split_long_response(response: str, cost: float = 0.0, max_length: int = 120)
                 available = max_length - len(prefix) - 3
                 msg = msg[:available] + "..."
                 numbered = prefix + msg
-                print(f"⚠️  Msg {i}/{total} tronqué: {len(numbered)} chars")
+                print(f"   ⚠️  [{i}/{total}] tronqué: {len(numbered)} chars")
             
             numbered_messages.append(numbered)
-            print(f"✅ [{i}/{total}] {len(numbered)} chars: {numbered[:60]}...")
-    
-    # Limite sécurité
-    if len(numbered_messages) > 15:
-        print(f"\n⚠️  Limitation à 15 messages")
-        numbered_messages = numbered_messages[:15]
+            print(f"   ✅ [{i}/{total}] {len(numbered)} chars")
     
     print(f"\n{'='*70}")
     print(f"✅ DÉCOUPAGE TERMINÉ: {len(numbered_messages)} messages")
-    print(f"💰 Coût requête: ${cost:.4f}")
-    print(f"💳 Solde restant: ${MISTRAL_BALANCE:.2f}")
+    print(f"💰 Coût: ${cost:.4f} | Solde: ${MISTRAL_BALANCE:.2f}")
     print(f"{'='*70}\n")
     
     return numbered_messages
@@ -548,21 +560,19 @@ def split_long_response(response: str, cost: float = 0.0, max_length: int = 120)
 # Test du module
 if __name__ == "__main__":
     print("="*70)
-    print("TEST MISTRAL HANDLER v1.3")
+    print("TEST MISTRAL HANDLER v1.4 - ALGORITHME ROBUSTE")
     print("="*70)
     
-    # Test découpage avec coût
-    print("\n📝 Test: Découpage optimisé avec coût")
-    print("-"*70)
+    # Test avec le texte du Canal de Panama
+    test_text = """Le canal de Panama, inauguré en 1914, relie les océans Atlantique et Pacifique. Les Français, menés par Ferdinand de Lesseps, échouent dans sa construction (1881-1894) à cause de maladies et difficultés techniques. Long de 77 km, il révolutionne le commerce maritime."""
     
-    long_text = """Pour prévenir la corrosion de l'inox marin, rincez régulièrement à l'eau douce pour éliminer le sel. Appliquez une couche de cire protectrice ou d'huile sur les pièces exposées. Évitez le contact avec des métaux différents qui causent une corrosion galvanique. Inspectez et nettoyez les zones difficiles d'accès mensuellement."""
+    print(f"\nTexte: {len(test_text)} chars")
+    print(f"Contenu: {test_text}\n")
     
-    messages = split_long_response(long_text, cost=0.0015, max_length=120)
+    messages = split_long_response(test_text, cost=0.0012, max_length=120)
     
-    print(f"\nTexte: {len(long_text)} chars")
-    print(f"Messages: {len(messages)}")
-    print(f"\nRésultat:")
+    print(f"\nRésultat: {len(messages)} messages")
     for msg in messages:
-        print(f"  [{len(msg)} chars] {msg}")
+        print(f"  [{len(msg):3d} chars] {msg}")
     
     print("\n" + "="*70)
