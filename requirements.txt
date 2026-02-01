@@ -1,9 +1,68 @@
-Flask==3.0.3
+# requirements.txt - v3.2.0
+# Service Garmin inReach AI + GRIB
+# Mise à jour: SendGrid → Resend
+
+# =============================================================================
+# EMAIL & SMTP
+# =============================================================================
+# NOUVEAU: Resend (remplacement SendGrid)
+resend==2.6.0
+
+# ANCIEN: SendGrid (ne plus installer)
+# sendgrid==6.11.0  # DEPRECATED - Remplacé par Resend
+
+# =============================================================================
+# AI APIs
+# =============================================================================
+# Claude (Anthropic)
+anthropic==0.39.0
+
+# Mistral AI
+mistralai==1.2.4
+
+# Requêtes HTTP génériques
 requests==2.32.3
-anthropic==0.34.0
+
+# =============================================================================
+# AUTOMATION WEB (inReach)
+# =============================================================================
+# Playwright pour automation navigateur
+playwright==1.48.0
+
+# Note: Après installation, exécuter:
+# playwright install chromium
+
+# =============================================================================
+# PARSING & DATA
+# =============================================================================
+# BeautifulSoup pour parsing HTML
+beautifulsoup4==4.12.3
+
+# Lxml parser (requis par BeautifulSoup)
+lxml==5.3.0
+
+# =============================================================================
+# UTILITAIRES
+# =============================================================================
+# Python-dotenv pour fichiers .env (développement local)
 python-dotenv==1.0.1
-playwright==1.40.0
-sendgrid==6.11.0
-gunicorn==23.0.0
-schedule==1.2.0
-mistralai==1.0.0
+
+# =============================================================================
+# NOTES D'INSTALLATION
+# =============================================================================
+# 
+# Installation complète:
+#   pip install -r requirements.txt
+#   playwright install chromium
+#
+# Installation minimale (sans GRIB):
+#   pip install anthropic mistralai requests
+#
+# Variables d'environnement requises (Render.com):
+#   GARMIN_USERNAME=garminced@gmail.com
+#   GARMIN_PASSWORD=xxx
+#   RESEND_API_KEY=re_xxxxxxxxxxxxx
+#   ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
+#   MISTRAL_API_KEY=xxxxxxxxxxxxx
+#   CLAUDE_BALANCE=5.00 (optionnel)
+#   MISTRAL_BALANCE=5.00 (optionnel)
