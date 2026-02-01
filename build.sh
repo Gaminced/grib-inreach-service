@@ -6,7 +6,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "🎭 Installation Playwright Chromium..."
-playwright install chromium
+pip install -r requirements.txt && PLAYWRIGHT_BROWSERS_PATH=/opt/render/.cache playwright install chromium
 
 echo "📁 Copie browsers vers répertoire persistant..."
 mkdir -p /opt/render/project/src/browsers
