@@ -1,4 +1,4 @@
-requete meteo# grib_handler.py - v3.5.4
+# grib_handler.py - v3.5.5
 """Module GRIB avec MAILERSEND - Format Saildocs COMPLET avec Reply-To + CC"""
 
 import time
@@ -73,7 +73,7 @@ def send_to_saildocs(grib_request):
                 "email": GARMIN_USERNAME,
                 "name": "Garmin inReach"
             },
-            "subject": "",
+            "subject": "requete meteo",
             "text": email_body
         }
         
