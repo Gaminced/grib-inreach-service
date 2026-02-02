@@ -1,153 +1,97 @@
-# config.py - v3.2.1
-"""
-Configuration centralisée pour le service Garmin inReach AI
-v3.2.1: Chromium système Render + Resend
-"""
+# config.py - v3.3.0
+"""Configuration centralisée pour GRIB inReach Service avec resend au lieu sendgrid"""
 
 import os
 
-# =============================================================================
-# GMAIL / IMAP
-# =============================================================================
-GARMIN_USERNAME = os.getenv('GARMIN_USERNAME', 'garminced@gmail.com')
-GARMIN_PASSWORD = os.getenv('GARMIN_PASSWORD')
+# ==========================================
+# INFORMATIONS VERSION
+# ==========================================
+VERSION = "3.3.0"
+VERSION_DATE = "2026-02-01"
+SERVICE_NAME = "GRIB inReach Service"
 
-IMAP_HOST = 'imap.gmail.com'
+# ==========================================
+# CREDENTIALS GARMIN
+# ==========================================
+GARMIN_USERNAME = os.environ.get('GARMIN_USERNAME', 'garminced@gmail.com')
+GARMIN_PASSWORD = os.environ.get('GARMIN_PASSWORD')
+
+# ==========================================
+# API KEYS
+# ==========================================
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
+MISTRAL_API_KEY = os.environ.get('MISTRAL_API_KEY')
+
+# ==========================================
+# EMAIL CONFIGURATION
+# ==========================================
+IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993
 
-# =============================================================================
-# RESEND (Remplacement SendGrid)
-# =============================================================================
-# NOUVEAU: Resend API Key (100 emails/jour gratuit)
-# Format: re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-# Obtenir sur: https://resend.com/api-keys
-RESEND_API_KEY = os.getenv('RESEND_API_KEY')
+SAILDOCS_EMAIL = "query@saildocs.com"
+SAILDOCS_RESPONSE_EMAIL = "query-reply@saildocs.com"  # CRITIQUE: Réponses viennent de query-REPLY
 
-# ANCIEN: SendGrid (déprécié, garder pour compatibilité inreach_sender.py)
-SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')  # Optionnel
+# ==========================================
+# INREACH CONFIGURATION
+# ==========================================
+MAX_MESSAGE_LENGTH = 120
+DELAY_BETWEEN_MESSAGES = 5
 
-# =============================================================================
-# SAILDOCS GRIB
-# =============================================================================
-SAILDOCS_EMAIL = 'query@saildocs.com'
-SAILDOCS_RESPONSE_EMAIL = 'query-reply@saildocs.com'
-SAILDOCS_TIMEOUT = 300  # 5 minutes
-
-# =============================================================================
-# PLAYWRIGHT (Automation inReach)
-# =============================================================================
-# Chromium est pré-installé sur Render.com
-# On utilise le binaire système au lieu de télécharger via playwright install
-PLAYWRIGHT_BROWSER_PATH = os.getenv('PLAYWRIGHT_BROWSER_PATH', '/usr/bin/chromium')
-
-# Timeouts
-PLAYWRIGHT_TIMEOUT = 60000  # 60 secondes
-DELAY_BETWEEN_MESSAGES = 3  # 3 secondes entre messages
-
-# Headers HTTP pour requêtes inReach
+# Headers HTTP pour requêtes Garmin
 INREACH_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate',
-    'Connection': 'keep-alive',
+    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 }
 
-# =============================================================================
-# ANTHROPIC (Claude)
-# =============================================================================
-ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+# ==========================================
+# PLAYWRIGHT CONFIGURATION
+# ==========================================
+PLAYWRIGHT_BROWSER_PATH = '/opt/render/project/src/browsers/chromium-1091/chrome-linux/chrome'
+PLAYWRIGHT_TIMEOUT = 30000  # 30 secondes
 
-# Solde Claude (optionnel, pour tracking)
-CLAUDE_BALANCE = float(os.getenv('CLAUDE_BALANCE', '5.00'))
+# ==========================================
+# FLASK CONFIGURATION
+# ==========================================
+PORT = int(os.environ.get('PORT', 10000))
+FLASK_DEBUG = False
 
-# =============================================================================
-# MISTRAL AI
-# =============================================================================
-MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY')
+# ==========================================
+# SCHEDULER CONFIGURATION
+# ==========================================
+CHECK_INTERVAL_MINUTES = 5  # Vérification toutes les 5 minutes
 
-# Solde Mistral (optionnel, pour tracking)
-MISTRAL_BALANCE = float(os.getenv('MISTRAL_BALANCE', '5.00'))
+# ==========================================
+# SAILDOCS CONFIGURATION
+# ==========================================
+SAILDOCS_TIMEOUT = 300  # 5 minutes max d'attente pour réponse
 
-# =============================================================================
-# VALIDATION CONFIGURATION
-# =============================================================================
-
+# ==========================================
+# VALIDATION
+# ==========================================
 def validate_config():
-    """Valide que toutes les variables essentielles sont configurées"""
-    
+    """Vérifie que la configuration est complète"""
     errors = []
-    warnings = []
     
-    # OBLIGATOIRES
     if not GARMIN_USERNAME:
-        errors.append("❌ GARMIN_USERNAME manquant")
+        errors.append("GARMIN_USERNAME manquant")
     
     if not GARMIN_PASSWORD:
-        errors.append("❌ GARMIN_PASSWORD manquant")
+        errors.append("GARMIN_PASSWORD manquant")
     
-    # RECOMMANDÉES pour GRIB
     if not RESEND_API_KEY:
-        warnings.append("⚠️  RESEND_API_KEY manquant (requis pour GRIB)")
+        errors.append("RESEND_API_KEY manquant (requis pour Saildocs)")
     
-    # RECOMMANDÉES pour AI
-    if not ANTHROPIC_API_KEY:
-        warnings.append("⚠️  ANTHROPIC_API_KEY manquant (Claude désactivé)")
-    
-    if not MISTRAL_API_KEY:
-        warnings.append("⚠️  MISTRAL_API_KEY manquant (Mistral désactivé)")
-    
-    # Playwright
-    if not os.path.exists(PLAYWRIGHT_BROWSER_PATH):
-        warnings.append(f"⚠️  Chromium non trouvé à: {PLAYWRIGHT_BROWSER_PATH}")
-        warnings.append(f"    → Playwright utilisera fallback automatique")
-    
-    # Affichage
-    print("\n" + "="*70)
-    print("🔍 VALIDATION CONFIGURATION")
-    print("="*70)
-    
-    if errors:
-        print("\n❌ ERREURS CRITIQUES:")
-        for error in errors:
-            print(f"   {error}")
-    
-    if warnings:
-        print("\n⚠️  AVERTISSEMENTS:")
-        for warning in warnings:
-            print(f"   {warning}")
-    
-    if not errors and not warnings:
-        print("\n✅ Configuration complète et valide")
-    elif not errors:
-        print("\n✅ Configuration opérationnelle (avec avertissements)")
-    
-    print("="*70 + "\n")
-    
-    return len(errors) == 0
+    return errors
 
-
-# Test automatique au démarrage
-if __name__ == "__main__":
-    print("="*70)
-    print("TEST CONFIG.PY v3.2.1")
-    print("="*70)
-    
-    validate_config()
-    
-    print("\n📋 Configuration actuelle:")
-    print(f"   GARMIN_USERNAME: {GARMIN_USERNAME}")
-    print(f"   GARMIN_PASSWORD: {'✅ configuré' if GARMIN_PASSWORD else '❌ manquant'}")
-    print(f"   RESEND_API_KEY: {'✅ configuré' if RESEND_API_KEY else '❌ manquant'}")
-    print(f"   ANTHROPIC_API_KEY: {'✅ configuré' if ANTHROPIC_API_KEY else '❌ manquant'}")
-    print(f"   MISTRAL_API_KEY: {'✅ configuré' if MISTRAL_API_KEY else '❌ manquant'}")
-    print(f"   PLAYWRIGHT_BROWSER_PATH: {PLAYWRIGHT_BROWSER_PATH}")
-    
-    # Vérification Chromium
-    import os
-    if os.path.exists(PLAYWRIGHT_BROWSER_PATH):
-        print(f"   ✅ Chromium trouvé")
-    else:
-        print(f"   ⚠️  Chromium non trouvé (utilisera fallback)")
-    
-    print("\n" + "="*70)
+def get_config_status():
+    """Retourne le statut de configuration pour /status"""
+    return {
+        "version": VERSION,
+        "version_date": VERSION_DATE,
+        "garmin_username": GARMIN_USERNAME if GARMIN_USERNAME else "Non configuré",
+        "RESEND_configured": "✅ Oui" if RESEND_API_KEY else "❌ Non",
+        "anthropic_configured": "✅ Oui" if ANTHROPIC_API_KEY else "❌ Non",
+        "mistral_configured": "✅ Oui" if MISTRAL_API_KEY else "❌ Non",
+        "check_interval": f"{CHECK_INTERVAL_MINUTES} minutes"
+    }
