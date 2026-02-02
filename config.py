@@ -1,7 +1,7 @@
-# config.py
+# config.py - v3.2.1
 """
 Configuration centralisée pour le service Garmin inReach AI
-v3.2.0: Migration SendGrid → Resend
+v3.2.1: Chromium système Render + Resend
 """
 
 import os
@@ -23,8 +23,8 @@ IMAP_PORT = 993
 # Obtenir sur: https://resend.com/api-keys
 RESEND_API_KEY = os.getenv('RESEND_API_KEY')
 
-# ANCIEN: SendGrid (ne plus utiliser)
-# SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')  # DEPRECATED
+# ANCIEN: SendGrid (déprécié, garder pour compatibilité inreach_sender.py)
+SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')  # Optionnel
 
 # =============================================================================
 # SAILDOCS GRIB
@@ -32,6 +32,26 @@ RESEND_API_KEY = os.getenv('RESEND_API_KEY')
 SAILDOCS_EMAIL = 'query@saildocs.com'
 SAILDOCS_RESPONSE_EMAIL = 'query-reply@saildocs.com'
 SAILDOCS_TIMEOUT = 300  # 5 minutes
+
+# =============================================================================
+# PLAYWRIGHT (Automation inReach)
+# =============================================================================
+# Chromium est pré-installé sur Render.com
+# On utilise le binaire système au lieu de télécharger via playwright install
+PLAYWRIGHT_BROWSER_PATH = os.getenv('PLAYWRIGHT_BROWSER_PATH', '/usr/bin/chromium')
+
+# Timeouts
+PLAYWRIGHT_TIMEOUT = 60000  # 60 secondes
+DELAY_BETWEEN_MESSAGES = 3  # 3 secondes entre messages
+
+# Headers HTTP pour requêtes inReach
+INREACH_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate',
+    'Connection': 'keep-alive',
+}
 
 # =============================================================================
 # ANTHROPIC (Claude)
@@ -77,6 +97,11 @@ def validate_config():
     if not MISTRAL_API_KEY:
         warnings.append("⚠️  MISTRAL_API_KEY manquant (Mistral désactivé)")
     
+    # Playwright
+    if not os.path.exists(PLAYWRIGHT_BROWSER_PATH):
+        warnings.append(f"⚠️  Chromium non trouvé à: {PLAYWRIGHT_BROWSER_PATH}")
+        warnings.append(f"    → Playwright utilisera fallback automatique")
+    
     # Affichage
     print("\n" + "="*70)
     print("🔍 VALIDATION CONFIGURATION")
@@ -94,6 +119,8 @@ def validate_config():
     
     if not errors and not warnings:
         print("\n✅ Configuration complète et valide")
+    elif not errors:
+        print("\n✅ Configuration opérationnelle (avec avertissements)")
     
     print("="*70 + "\n")
     
@@ -103,7 +130,7 @@ def validate_config():
 # Test automatique au démarrage
 if __name__ == "__main__":
     print("="*70)
-    print("TEST CONFIG.PY v3.2.0")
+    print("TEST CONFIG.PY v3.2.1")
     print("="*70)
     
     validate_config()
@@ -114,5 +141,13 @@ if __name__ == "__main__":
     print(f"   RESEND_API_KEY: {'✅ configuré' if RESEND_API_KEY else '❌ manquant'}")
     print(f"   ANTHROPIC_API_KEY: {'✅ configuré' if ANTHROPIC_API_KEY else '❌ manquant'}")
     print(f"   MISTRAL_API_KEY: {'✅ configuré' if MISTRAL_API_KEY else '❌ manquant'}")
+    print(f"   PLAYWRIGHT_BROWSER_PATH: {PLAYWRIGHT_BROWSER_PATH}")
+    
+    # Vérification Chromium
+    import os
+    if os.path.exists(PLAYWRIGHT_BROWSER_PATH):
+        print(f"   ✅ Chromium trouvé")
+    else:
+        print(f"   ⚠️  Chromium non trouvé (utilisera fallback)")
     
     print("\n" + "="*70)
