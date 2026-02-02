@@ -1,4 +1,4 @@
-# grib_handler.py - v3.5.1
+# grib_handler.py - v3.5.2
 """Module GRIB avec MAILERSEND (3000 emails/mois gratuit)"""
 
 import time
@@ -30,7 +30,7 @@ def send_to_saildocs(grib_request):
         email_body = f"send {grib_request}"
         
         print(f"📧 Création email MailerSend...", flush=True)
-        print(f"   De: inreach@trial-0r83ql3zw7mgzw1j.mlsender.net", flush=True)
+        print(f"   De: inreach@test-69oxl5eoonxl785k.mlsender.net", flush=True)
         print(f"   À: {SAILDOCS_EMAIL}", flush=True)
         print(f"   Corps: {email_body}", flush=True)
         
@@ -44,7 +44,7 @@ def send_to_saildocs(grib_request):
         
         payload = {
             "from": {
-                "email": "inreach@trial-0r83ql3zw7mgzw1j.mlsender.net",
+                "email": "inreach@test-69oxl5eoonxl785k.mlsender.net",
                 "name": "Garmin inReach"
             },
             "to": [
