@@ -1,7 +1,7 @@
-# grib_handler.py - v3.2.0
+# grib_handler.py - v3.3.0
 """
 Module de traitement des requêtes GRIB avec Resend
-v3.2.0: Migration SendGrid → Resend (100 emails/jour gratuit)
+v3.3.0: Migration SendGrid → Resend (100 emails/jour gratuit) et naming 
 """
 
 import time
@@ -12,7 +12,7 @@ from config import (GARMIN_USERNAME, GARMIN_PASSWORD, RESEND_API_KEY,
                     SAILDOCS_EMAIL, SAILDOCS_RESPONSE_EMAIL, IMAP_HOST, IMAP_PORT, SAILDOCS_TIMEOUT)
 from utils import encode_and_split_grib
 from inreach_sender import send_to_inreach
-from inreach_email_cleaner import extract_grib_request
+from inreach-cleaner-final import extract_grib_request
 
 # Forcer stdout non-bufferisé
 sys.stdout.flush()
