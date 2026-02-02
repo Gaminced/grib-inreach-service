@@ -19,7 +19,7 @@ GARMIN_PASSWORD = os.environ.get('GARMIN_PASSWORD')
 # ==========================================
 # API KEYS
 # ==========================================
-# MAILGUN (remplace Resend)
+# MAILERSEND(remplace Resend)
 MAILERSEND_API_KEY = os.environ.get('MAILERSEND_API_KEY')  # Format: key-xxxxx
 #MAILGUN_DOMAIN = os.environ.get('MAILGUN_DOMAIN')    # Format: sandboxXXX.mailgun.org
 
@@ -49,7 +49,7 @@ INREACH_HEADERS = {
 # ==========================================
 # PLAYWRIGHT CONFIGURATION
 # ==========================================
-PLAYWRIGHT_BROWSER_PATH = '/usr/bin/chromium'
+PLAYWRIGHT_BROWSER_PATH = '/opt/render/project/src/browsers/chromium-1091/chrome-linux/chrome'
 PLAYWRIGHT_TIMEOUT = 30000
 
 # ==========================================
