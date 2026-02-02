@@ -1,11 +1,11 @@
-# inreach_sender.py - v3.3.0
-"""Module envoi inReach - Version stable sans wait_for detached modif pour resend"""
+# inreach_sender.py - v3.5.0
+"""Module envoi inReach - Version stable avec MAILERSEND"""
 
 import time
 import requests
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
-from config import (GARMIN_USERNAME, GARMIN_PASSWORD, RESEND_API_KEY,
+from config import (GARMIN_USERNAME, GARMIN_PASSWORD, MAILERSEND_API_KEY,
                     DELAY_BETWEEN_MESSAGES, INREACH_HEADERS, 
                     PLAYWRIGHT_BROWSER_PATH, PLAYWRIGHT_TIMEOUT)
 
@@ -79,7 +79,6 @@ def send_via_playwright_inreachlink(url, messages):
                         try:
                             page.wait_for_load_state('networkidle', timeout=10000)
                         except:
-                            # Si timeout sur networkidle, continuer quand même
                             pass
                         time.sleep(2)
                     
@@ -108,11 +107,9 @@ def send_via_playwright_inreachlink(url, messages):
                     print("📝 Attente textarea...", flush=True)
                     textarea = page.locator("textarea").first
                     
-                    # Attente avec retry si nécessaire
                     try:
                         textarea.wait_for(state="visible", timeout=15000)
                     except:
-                        # Si timeout, attendre encore un peu et réessayer
                         print("   ⏳ Retry attente textarea...", flush=True)
                         time.sleep(3)
                         textarea.wait_for(state="visible", timeout=10000)
@@ -129,12 +126,6 @@ def send_via_playwright_inreachlink(url, messages):
                     send_final.wait_for(state="visible", timeout=10000)
                     send_final.click()
                     
-                    # ═══════════════════════════════════════════════════
-                    # CHANGEMENT CRITIQUE: Ne plus attendre "detached"
-                    # Le textarea ne disparaît pas toujours complètement
-                    # mais le message est bien envoyé
-                    # → Attente simple de 3 secondes
-                    # ═══════════════════════════════════════════════════
                     print("⏳ Attente envoi...", flush=True)
                     time.sleep(3)
                     
@@ -144,7 +135,6 @@ def send_via_playwright_inreachlink(url, messages):
                     print(f"   ❌ Erreur message {i}: {e}", flush=True)
                     import traceback
                     traceback.print_exc()
-                    # Continuer avec le message suivant
                     continue
             
             print(f"\n{'='*50}", flush=True)
@@ -202,33 +192,43 @@ def send_via_post_garmin(url, messages):
 
 
 def send_via_email(reply_email, messages):
-    """Envoie via email RESEND"""
-    if not RESEND_API_KEY:
-        print("❌ RESEND_API_KEY non configurée", flush=True)
+    """Envoie via email MailerSend"""
+    if not MAILERSEND_API_KEY:
+        print("❌ MAILERSEND_API_KEY non configurée", flush=True)
         return False
     
     try:
-        from resend import ResendAPIClient
-        from resend.helpers.mail import Mail
-        
-        sg = ResendAPIClient(RESEND_API_KEY)
-        
         # Combiner tous les messages
         combined = "\n\n---\n\n".join([
             f"Message {i}/{len(messages)}:\n{msg}" 
             for i, msg in enumerate(messages, 1)
         ])
         
-        email_content = Mail(
-            from_email=GARMIN_USERNAME,
-            to_emails=reply_email,
-            subject='GRIB Weather Data Response',
-            plain_text_content=combined
-        )
+        # API MailerSend
+        url = "https://api.mailersend.com/v1/email"
         
-        response = sg.send(email_content)
+        headers = {
+            "Authorization": f"Bearer {MAILERSEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
         
-        if response.status_code in [200, 201, 202]:
+        payload = {
+            "from": {
+                "email": "inreach@trial-0r83ql3zw7mgzw1j.mlsender.net",
+                "name": "Garmin inReach"
+            },
+            "to": [
+                {
+                    "email": reply_email
+                }
+            ],
+            "subject": "GRIB Weather Data Response",
+            "text": combined
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 202:
             print(f"✅ Email envoyé ({len(messages)} messages)", flush=True)
             return True
         else:
@@ -259,7 +259,7 @@ def send_to_inreach(url, messages, reply_email=None):
         return send_via_post_garmin(url, messages)
         
     elif reply_email:
-        print("🎯 Mode: EMAIL (Resend)", flush=True)
+        print("🎯 Mode: EMAIL (MailerSend)", flush=True)
         return send_via_email(reply_email, messages)
         
     else:
