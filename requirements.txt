@@ -1,6 +1,12 @@
-# requirements.txt - v3.2.0
+# requirements.txt - v3.2.1
 # Service Garmin inReach AI + GRIB
-# Mise à jour: SendGrid → Resend
+# Mise à jour: SendGrid → Resend + module schedule
+
+# =============================================================================
+# SCHEDULING
+# =============================================================================
+# APScheduler pour vérification emails périodique
+schedule==1.2.2
 
 # =============================================================================
 # EMAIL & SMTP
@@ -29,8 +35,7 @@ requests==2.32.3
 # Playwright pour automation navigateur
 playwright==1.48.0
 
-# Note: Après installation, exécuter:
-# playwright install chromium
+# Note: Chromium pré-installé sur Render, pas d'installation manuelle
 
 # =============================================================================
 # PARSING & DATA
@@ -53,10 +58,9 @@ python-dotenv==1.0.1
 # 
 # Installation complète:
 #   pip install -r requirements.txt
-#   playwright install chromium
 #
 # Installation minimale (sans GRIB):
-#   pip install anthropic mistralai requests
+#   pip install anthropic mistralai requests schedule
 #
 # Variables d'environnement requises (Render.com):
 #   GARMIN_USERNAME=garminced@gmail.com
