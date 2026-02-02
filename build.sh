@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # build.sh - v3.2.2
-# Build simplifié - Utilise Chromium pré-installé de Render
+# Build simplifié - Utilise Chromium comme avant dec 2025
 set -e
 
 echo "========================================================================"
-echo "🚀 BUILD GARMIN INREACH SERVICE v3.2.2"
+echo "🚀 BUILD GARMIN INREACH SERVICE v3.2.3"
 echo "========================================================================"
 
 # =============================================================================
@@ -22,7 +22,7 @@ echo "✅ Python packages installés:"
 pip list | grep -E "(resend|anthropic|mistral|playwright)" || true
 
 # =============================================================================
-# Configuration Playwright - Utilise Chromium pré-installé de Render
+# Configuration Playwright - Utilise Chromium
 # =============================================================================
 echo ""
 echo "🎭 Configuration Playwright..."
@@ -30,6 +30,11 @@ echo "------------------------------------------------------------------------"
 
 echo "🎭 Installation Playwright Chromium..."
 playwright install chromium
+
+echo "📁 Copie browsers vers répertoire persistant..."
+mkdir -p /opt/render/project/src/browsers
+cp -r ~/.cache/ms-playwright/chromium-1091 /opt/render/project/src/browsers/
+
 
 echo "✅ Playwright configuré pour utiliser Chromium système de Render"
 
