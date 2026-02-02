@@ -1,5 +1,5 @@
-# grib_handler.py - v3.5.0
-"""Module GRIB avec MAILERSEND (remplace Resend)"""
+# grib_handler.py - v3.5.1
+"""Module GRIB avec MAILERSEND (3000 emails/mois gratuit)"""
 
 import time
 import imaplib
@@ -16,46 +16,54 @@ sys.stdout.flush()
 
 
 def send_to_saildocs(grib_request):
-    """Envoie requête GRIB via MAILERSEND"""
+    """Envoie requête GRIB via MailerSend"""
     print(f"\n{'='*70}", flush=True)
-    print(f"📤 ÉTAPE 1/3: ENVOI À SAILDOCS (MAILERSEND)", flush=True)
+    print(f"📤 ÉTAPE 1/3: ENVOI À SAILDOCS (MailerSend)", flush=True)
     print(f"{'='*70}", flush=True)
     print(f"Requête: {grib_request}", flush=True)
     
-    if not MAILERSEND_API_KEY :
-        print("❌ MAILERSEND_API_KEY ", flush=True)
+    if not MAILERSEND_API_KEY:
+        print("❌ MAILERSEND_API_KEY manquant", flush=True)
         return False
     
     try:
         email_body = f"send {grib_request}"
         
-        print(f"📧 Création email Mailersend...", flush=True)
-        print(f"   De: inreach@maisersend.com", flush=True)
+        print(f"📧 Création email MailerSend...", flush=True)
+        print(f"   De: inreach@trial-0r83ql3zw7mgzw1j.mlsender.net", flush=True)
         print(f"   À: {SAILDOCS_EMAIL}", flush=True)
         print(f"   Corps: {email_body}", flush=True)
         
-        # API Mailersend
-        url = f"https://api.mailersend.com/v1/email"
+        # API MailerSend
+        url = "https://api.mailersend.com/v1/email"
         
-        response = requests.post(
-            url,
-            auth=("api", MAILERSEND_API_KEY),
-            data={
-                "from": f"Garmin inReach <inreach@mailersend.com>",
-                "to": [SAILDOCS_EMAIL],
-                "subject": "send",
-                "text": email_body
+        headers = {
+            "Authorization": f"Bearer {MAILERSEND_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "from": {
+                "email": "inreach@trial-0r83ql3zw7mgzw1j.mlsender.net",
+                "name": "Garmin inReach"
             },
-            timeout=30
-        )
+            "to": [
+                {
+                    "email": SAILDOCS_EMAIL
+                }
+            ],
+            "subject": "send",
+            "text": email_body
+        }
         
-        print(f"📬 Mailersend Status: {response.status_code}", flush=True)
+        print(f"📤 Envoi email...", flush=True)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         
-        if response.status_code == 200:
-            result = response.json()
+        print(f"📬 MailerSend Status: {response.status_code}", flush=True)
+        
+        if response.status_code == 202:  # MailerSend retourne 202 Accepted
             print(f"✅ Demande envoyée avec succès", flush=True)
             print(f"✅ Réponse attendue de: {SAILDOCS_RESPONSE_EMAIL}", flush=True)
-            print(f"📊 Message ID: {result.get('id', 'N/A')}", flush=True)
             return True
         else:
             print(f"❌ Erreur HTTP {response.status_code}", flush=True)
@@ -63,7 +71,7 @@ def send_to_saildocs(grib_request):
             return False
         
     except Exception as e:
-        print(f"❌ Erreur Mailersend: {e}", flush=True)
+        print(f"❌ Erreur MailerSend: {e}", flush=True)
         import traceback
         traceback.print_exc()
         return False
@@ -156,7 +164,7 @@ def wait_for_saildocs_response(timeout=SAILDOCS_TIMEOUT):
 def process_grib_request(raw_email_body, inreach_url, mail=None):
     """Traite requête GRIB complète"""
     print(f"\n{'='*70}", flush=True)
-    print(f"🌊 TRAITEMENT GRIB v3.5.0 (Mailersend)", flush=True)
+    print(f"🌊 TRAITEMENT GRIB v3.5.0 (MailerSend)", flush=True)
     print(f"{'='*70}", flush=True)
     
     print(f"🧹 Nettoyage email InReach...", flush=True)
