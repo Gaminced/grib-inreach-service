@@ -1,12 +1,12 @@
-# config.py - v3.5.0
-"""Configuration centralisée - Mailersend (remplace Resend)"""
+# config.py - v3.6.0
+"""Configuration centralisée - Mailersend (remplace Resend) et chemin playwright"""
 
 import os
 
 # ==========================================
 # VERSION
 # ==========================================
-VERSION = "3.5.0"
+VERSION = "3.6.0"
 VERSION_DATE = "2026-02-02"
 SERVICE_NAME = "GRIB inReach Service"
 
