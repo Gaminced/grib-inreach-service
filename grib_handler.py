@@ -12,7 +12,7 @@ from config import (GARMIN_USERNAME, GARMIN_PASSWORD, RESEND_API_KEY,
                     SAILDOCS_EMAIL, SAILDOCS_RESPONSE_EMAIL, IMAP_HOST, IMAP_PORT, SAILDOCS_TIMEOUT)
 from utils import encode_and_split_grib
 from inreach_sender import send_to_inreach
-from inreach-cleaner-final import extract_grib_request
+from inreach_cleaner_final import extract_grib_request
 
 # Forcer stdout non-bufferisé
 sys.stdout.flush()
