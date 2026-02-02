@@ -1,11 +1,11 @@
-# inreach_sender.py - v3.2.1
-"""Module envoi inReach - Version stable sans wait_for detached"""
+# inreach_sender.py - v3.3.0
+"""Module envoi inReach - Version stable sans wait_for detached modif pour resend"""
 
 import time
 import requests
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
-from config import (GARMIN_USERNAME, GARMIN_PASSWORD, SENDGRID_API_KEY,
+from config import (GARMIN_USERNAME, GARMIN_PASSWORD, RESEND_API_KEY,
                     DELAY_BETWEEN_MESSAGES, INREACH_HEADERS, 
                     PLAYWRIGHT_BROWSER_PATH, PLAYWRIGHT_TIMEOUT)
 
@@ -202,16 +202,16 @@ def send_via_post_garmin(url, messages):
 
 
 def send_via_email(reply_email, messages):
-    """Envoie via email SendGrid"""
-    if not SENDGRID_API_KEY:
-        print("❌ SENDGRID_API_KEY non configurée", flush=True)
+    """Envoie via email RESEND"""
+    if not RESEND_API_KEY:
+        print("❌ RESEND_API_KEY non configurée", flush=True)
         return False
     
     try:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
+        from resend import ResendAPIClient
+        from resend.helpers.mail import Mail
         
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        sg = ResendAPIClient(RESEND_API_KEY)
         
         # Combiner tous les messages
         combined = "\n\n---\n\n".join([
@@ -259,7 +259,7 @@ def send_to_inreach(url, messages, reply_email=None):
         return send_via_post_garmin(url, messages)
         
     elif reply_email:
-        print("🎯 Mode: EMAIL (SendGrid)", flush=True)
+        print("🎯 Mode: EMAIL (Resend)", flush=True)
         return send_via_email(reply_email, messages)
         
     else:
