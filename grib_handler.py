@@ -1,4 +1,4 @@
-# grib_handler.py - v3.3.0
+# grib_handler.py - v3.3.1
 """
 Module de traitement des requêtes GRIB avec Resend
 v3.3.0: Migration SendGrid → Resend (100 emails/jour gratuit) et naming 
@@ -54,14 +54,14 @@ def send_to_saildocs(grib_request):
         email_body = f"send {grib_request}"
         
         print(f"📧 Création email Resend...", flush=True)
-        print(f"   De: onboarding@resend.dev", flush=True)  # Domaine gratuit Resend
+        print(f"   De: onboarding@garminced.com", flush=True)  # Domaine gratuit Resend
         print(f"   Reply-To: {GARMIN_USERNAME}", flush=True)
         print(f"   À: {SAILDOCS_EMAIL}", flush=True)
         print(f"   Corps: {email_body}", flush=True)
         
         # Envoi email avec Resend
         params = {
-            "from": "Garmin inReach <onboarding@resend.dev>",  # Domaine Resend gratuit
+            "from": "Garmin inReach <onboarding@garminced.com>",  # Domaine Resend gratuit garminced.com
             "to": [SAILDOCS_EMAIL],
             "subject": "send",
             "text": email_body,
