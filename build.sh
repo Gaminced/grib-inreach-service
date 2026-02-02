@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# build.sh - v3.2.2
-# Build simplifié - Utilise Chromium comme avant dec 2025
+# build.sh - v3.5.0
+# Build simplifié - Utilise Chromium avec reperoire persistant
 set -e
 
 echo "========================================================================"
-echo "🚀 BUILD GARMIN INREACH SERVICE v3.2.3"
+echo "🚀 BUILD GARMIN INREACH SERVICE v3.5.0"
 echo "========================================================================"
 
 # =============================================================================
@@ -47,7 +47,7 @@ echo "✅ BUILD TERMINÉ AVEC SUCCÈS!"
 echo "========================================================================"
 echo ""
 echo "📦 Packages installés:"
-echo "   ✅ resend (emails GRIB)"
+echo "   ✅  Mailersend(emails GRIB)"
 echo "   ✅ anthropic (Claude AI)"
 echo "   ✅ mistralai (Mistral AI)"
 echo "   ✅ playwright (automation)"
