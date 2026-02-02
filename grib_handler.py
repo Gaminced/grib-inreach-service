@@ -1,5 +1,5 @@
-# grib_handler.py - v3.5.2
-"""Module GRIB avec MAILERSEND (3000 emails/mois gratuit)"""
+# grib_handler.py - v3.5.4
+"""Module GRIB avec MAILERSEND - Format Saildocs COMPLET avec Reply-To + CC"""
 
 import time
 import imaplib
@@ -16,7 +16,15 @@ sys.stdout.flush()
 
 
 def send_to_saildocs(grib_request):
-    """Envoie requête GRIB via MailerSend"""
+    """
+    Envoie requête GRIB via MailerSend avec format COMPLET Saildocs
+    
+    FORMAT SAILDOCS REQUIS:
+    - Reply-To: garminced@gmail.com (CRITIQUE pour recevoir réponse)
+    - CC: garminced@gmail.com (traçabilité)
+    - Subject: vide
+    - Body: send + requête
+    """
     print(f"\n{'='*70}", flush=True)
     print(f"📤 ÉTAPE 1/3: ENVOI À SAILDOCS (MailerSend)", flush=True)
     print(f"{'='*70}", flush=True)
@@ -31,7 +39,10 @@ def send_to_saildocs(grib_request):
         
         print(f"📧 Création email MailerSend...", flush=True)
         print(f"   De: inreach@test-69oxl5eoonxl785k.mlsender.net", flush=True)
+        print(f"   Reply-To: {GARMIN_USERNAME}", flush=True)
         print(f"   À: {SAILDOCS_EMAIL}", flush=True)
+        print(f"   CC: {GARMIN_USERNAME}", flush=True)
+        print(f"   Subject: (vide)", flush=True)
         print(f"   Corps: {email_body}", flush=True)
         
         # API MailerSend
@@ -52,7 +63,17 @@ def send_to_saildocs(grib_request):
                     "email": SAILDOCS_EMAIL
                 }
             ],
-            "subject": "send",
+            "cc": [
+                {
+                    "email": GARMIN_USERNAME,
+                    "name": "Archive"
+                }
+            ],
+            "reply_to": {
+                "email": GARMIN_USERNAME,
+                "name": "Garmin inReach"
+            },
+            "subject": "",
             "text": email_body
         }
         
@@ -61,13 +82,15 @@ def send_to_saildocs(grib_request):
         
         print(f"📬 MailerSend Status: {response.status_code}", flush=True)
         
-        if response.status_code == 202:  # MailerSend retourne 202 Accepted
+        if response.status_code == 202:
             print(f"✅ Demande envoyée avec succès", flush=True)
+            print(f"✅ Reply-To configuré: {GARMIN_USERNAME}", flush=True)
+            print(f"✅ Copie envoyée à: {GARMIN_USERNAME}", flush=True)
             print(f"✅ Réponse attendue de: {SAILDOCS_RESPONSE_EMAIL}", flush=True)
             return True
         else:
             print(f"❌ Erreur HTTP {response.status_code}", flush=True)
-            print(f"Response: {response.text[:200]}", flush=True)
+            print(f"Response: {response.text[:500]}", flush=True)
             return False
         
     except Exception as e:
@@ -164,7 +187,7 @@ def wait_for_saildocs_response(timeout=SAILDOCS_TIMEOUT):
 def process_grib_request(raw_email_body, inreach_url, mail=None):
     """Traite requête GRIB complète"""
     print(f"\n{'='*70}", flush=True)
-    print(f"🌊 TRAITEMENT GRIB v3.5.0 (MailerSend)", flush=True)
+    print(f"🌊 TRAITEMENT GRIB v3.5.4 (MailerSend)", flush=True)
     print(f"{'='*70}", flush=True)
     
     print(f"🧹 Nettoyage email InReach...", flush=True)
