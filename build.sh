@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# build.sh - v3.2.1
+# build.sh - v3.2.2
 # Build simplifié - Utilise Chromium pré-installé de Render
 set -e
 
 echo "========================================================================"
-echo "🚀 BUILD GARMIN INREACH SERVICE v3.2.1"
+echo "🚀 BUILD GARMIN INREACH SERVICE v3.2.2"
 echo "========================================================================"
 
 # =============================================================================
@@ -28,8 +28,8 @@ echo ""
 echo "🎭 Configuration Playwright..."
 echo "------------------------------------------------------------------------"
 
-# Render a Chromium pré-installé, on configure juste Playwright pour l'utiliser
-# Pas besoin d'installer Chromium manuellement
+echo "🎭 Installation Playwright Chromium..."
+playwright install chromium
 
 echo "✅ Playwright configuré pour utiliser Chromium système de Render"
 
