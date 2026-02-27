@@ -1,5 +1,5 @@
-# grib_handler.py - v3.5.6
-"""Module GRIB - FIX: Préserve les points décimaux (0.5) dans requêtes"""
+# grib_handler.py - v3.5.7
+"""FIX: Subject requis par MailerSend (pas vide)"""
 
 import time
 import imaplib
@@ -16,15 +16,7 @@ sys.stdout.flush()
 
 
 def send_to_saildocs(grib_request):
-    """
-    Envoie requête GRIB via MailerSend avec format COMPLET Saildocs
-    
-    FORMAT SAILDOCS REQUIS:
-    - Reply-To: garminced@gmail.com (CRITIQUE pour recevoir réponse)
-    - CC: garminced@gmail.com (traçabilité)
-    - Subject: vide
-    - Body: send + requête
-    """
+    """Envoie requête GRIB via MailerSend"""
     print(f"\n{'='*70}", flush=True)
     print(f"📤 ÉTAPE 1/3: ENVOI À SAILDOCS (MailerSend)", flush=True)
     print(f"{'='*70}", flush=True)
@@ -42,10 +34,9 @@ def send_to_saildocs(grib_request):
         print(f"   Reply-To: {GARMIN_USERNAME}", flush=True)
         print(f"   À: {SAILDOCS_EMAIL}", flush=True)
         print(f"   CC: {GARMIN_USERNAME}", flush=True)
-        print(f"   Subject: (vide)", flush=True)
+        print(f"   Subject: GRIB request", flush=True)
         print(f"   Corps: {email_body}", flush=True)
         
-        # API MailerSend
         url = "https://api.mailersend.com/v1/email"
         
         headers = {
@@ -73,7 +64,7 @@ def send_to_saildocs(grib_request):
                 "email": GARMIN_USERNAME,
                 "name": "Garmin inReach"
             },
-            "subject": "",
+            "subject": "GRIB request",
             "text": email_body
         }
         
@@ -187,24 +178,23 @@ def wait_for_saildocs_response(timeout=SAILDOCS_TIMEOUT):
 def process_grib_request(raw_email_body, inreach_url, mail=None):
     """Traite requête GRIB complète"""
     print(f"\n{'='*70}", flush=True)
-    print(f"🌊 TRAITEMENT GRIB v3.5.6 (MailerSend)", flush=True)
+    print(f"🌊 TRAITEMENT GRIB v3.5.7 (MailerSend)", flush=True)
     print(f"{'='*70}", flush=True)
     
-    # NOUVEAU v3.5.6: Logger l'email BRUT pour debug
-    print(f"📧 Email brut (100 premiers chars): {raw_email_body[:100]}...", flush=True)
+    print(f"📧 Email brut (200 premiers chars):", flush=True)
+    print(f"   {raw_email_body[:200]}...", flush=True)
     
-    print(f"🧹 Nettoyage email InReach...", flush=True)
+    print(f"\n🧹 Nettoyage email InReach...", flush=True)
     grib_request = extract_grib_request(raw_email_body)
     
     if not grib_request:
         print(f"❌ Impossible d'extraire la requête GRIB", flush=True)
-        print(f"💡 Email brut: {raw_email_body[:200]}", flush=True)
+        print(f"💡 Email brut complet: {raw_email_body}", flush=True)
         return False
     
-    # NOUVEAU v3.5.6: Logger AVANT/APRÈS nettoyage
     print(f"✅ Requête extraite: {grib_request}", flush=True)
     print(f"📊 Longueur: {len(grib_request)} caractères", flush=True)
-    print(f"🔍 Contient des points: {'OUI' if '.' in grib_request else 'NON ⚠️'}", flush=True)
+    print(f"🔍 Contient '.' : {'OUI ✅' if '.' in grib_request else 'NON ❌'}", flush=True)
     print(f"📍 URL inReach: {inreach_url}", flush=True)
     print(f"{'='*70}\n", flush=True)
     
