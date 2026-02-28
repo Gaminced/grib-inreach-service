@@ -1,5 +1,5 @@
-# inreach_email_cleaner.py
-"""Module de nettoyage des emails InReach pour extraction de la requête utilisateur"""
+# inreach_cleaner_final.py - v3.5.8
+"""FIX: Support points décimaux (0.5, 0.25) dans requêtes GRIB"""
 
 import re
 
@@ -75,18 +75,20 @@ def extract_grib_request(raw_body: str) -> str:
     """
     Extrait une requête GRIB d'un email InReach
     
+    v3.5.8: FIX - Support points décimaux (0.5, 0.25)
+    
     Cherche pattern: GFS:lat1,lat2,lon1,lon2|param1,param2...
     
     Args:
         raw_body: Corps brut de l'email
         
     Returns:
-        Requête GRIB nettoyée (ex: "GFS:8N,9N,80W,79W|1,1|0,3,6,12,18,24,36|WIND,GUST,PRMSL")
+        Requête GRIB nettoyée (ex: "GFS:8N,9N,80W,79W|0.5,0.5|0,3,6|WIND,GUST")
     """
     cleaned = clean_inreach_email(raw_body)
     
-    # Pattern GRIB typique
-    grib_pattern = r'(GFS|GFS3)[:\s]+[-\d,NSEW|A-Z\s]+'
+    # Pattern GRIB - v3.5.8: Ajout du point '.' pour supporter 0.5, 0.25, etc.
+    grib_pattern = r'(GFS|GFS3)[:\s]+[-\d.,NSEW|A-Z\s]+'
     match = re.search(grib_pattern, cleaned, re.IGNORECASE)
     
     if match:
@@ -101,19 +103,18 @@ def extract_grib_request(raw_body: str) -> str:
 
 # Test du module
 if __name__ == "__main__":
-    # Exemple d'email InReach réel
-    test_email = """Gfs:8N,9N,80W,79W|1,1|0,3,6,12,18,24,36|WIND,GUST,PRMSL
+    # Test avec points décimaux
+    test_email = """gfs:0N,1S,89W,91W|0.25,0.5|0,6,12,18,24|WIND,GUST
 
 View the location or send a reply to Cedric ALVAREZ:
 https://inreachlink.com/m3F_7nUuuZd009w-YzWOPQ
 
-
 Do not reply directly to this message.
 
-This message was sent to you using the inReach two-way satellite communicator with GPS. To learn more, visit http://explore.garmin.com/inreach."""
+This message was sent to you using the inReach two-way satellite communicator with GPS."""
     
     print("="*70)
-    print("TEST NETTOYAGE EMAIL INREACH")
+    print("TEST NETTOYAGE EMAIL INREACH v3.5.8")
     print("="*70)
     print(f"\n📧 Email original ({len(test_email)} chars):")
     print(test_email)
@@ -129,24 +130,6 @@ This message was sent to you using the inReach two-way satellite communicator wi
     grib = extract_grib_request(test_email)
     print(f"🌊 Requête GRIB extraite ({len(grib)} chars):")
     print(grib)
+    print(f"🔍 Contient '.' : {'OUI ✅' if '.' in grib else 'NON ❌'}")
     
     print("\n" + "="*70)
-    
-    # Test avec question Claude/Mistral
-    test_question = """Quelle est la différence entre un génois et un foc ?
-
-View the location or send a reply to Cedric ALVAREZ:
-https://inreachlink.com/abc123
-
-Do not reply directly to this message.
-
-This message was sent to you using the inReach two-way satellite communicator with GPS."""
-    
-    print("\n📧 Question maritime:")
-    print(test_question)
-    
-    print("\n" + "="*70)
-    
-    cleaned_q = clean_inreach_email(test_question)
-    print(f"✅ Question nettoyée:")
-    print(cleaned_q)
