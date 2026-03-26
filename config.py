@@ -1,7 +1,7 @@
-# config.py - v3.7.1-gmail
+# config.py - v3.7.2-gmail
 import os
 
-VERSION = "3.7.1"
+VERSION = "3.7.2"
 VERSION_DATE = "2026-03-26"
 SERVICE_NAME = "GRIB inReach Service"
 
@@ -50,3 +50,15 @@ def validate_config():
     if not os.path.exists(GMAIL_CREDENTIALS_FILE):
         errors.append("credentials.json manquant")
     return errors
+
+def get_config_status():
+    """Statut configuration"""
+    return {
+        "version": VERSION,
+        "version_date": VERSION_DATE,
+        "garmin_username": GARMIN_USERNAME if GARMIN_USERNAME else "Non configuré",
+        "anthropic_configured": "✅ Oui" if ANTHROPIC_API_KEY else "❌ Non",
+        "mistral_configured": "✅ Oui" if MISTRAL_API_KEY else "❌ Non",
+        "check_interval": f"{CHECK_INTERVAL_MINUTES} minutes"
+    }
+
