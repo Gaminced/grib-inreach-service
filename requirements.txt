@@ -1,4 +1,4 @@
-# requirements.txt - v3.5.0
+# requirements.txt - v3.6.0
 # MAILERSEND (remplace Resend)
 
 # SCHEDULING
@@ -21,3 +21,8 @@ python-dotenv==1.0.1
 
 # Flask
 flask==3.0.0
+
+#gmail api
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
