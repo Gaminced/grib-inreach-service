@@ -1,7 +1,7 @@
-# config.py - v3.7.0-gmail
+# config.py - v3.7.1-gmail
 import os
 
-VERSION = "3.7.0-gmail"
+VERSION = "3.7.1"
 VERSION_DATE = "2026-03-26"
 SERVICE_NAME = "GRIB inReach Service"
 
