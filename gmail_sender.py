@@ -1,3 +1,4 @@
+# gmail_sender.py - v1.1.1
 import base64
 import pickle
 from email.mime.text import MIMEText
@@ -18,14 +19,14 @@ def send_email_gmail(subject, body, to_email):
 
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
 
-        service.users().messages().send(
+        result = service.users().messages().send(
             userId="me",
             body={'raw': raw}
         ).execute()
 
-        print("✅ Gmail envoyé")
+        print(f"Gmail OK ID={result['id']}")
         return True
 
     except Exception as e:
-        print(f"❌ Gmail erreur: {e}")
+        print(f"Gmail erreur: {e}")
         return False
